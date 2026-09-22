@@ -18,7 +18,9 @@ from ..models import (
 
 from ..schemas.inspection_schema import (
     CreateInspectionRequest,
-    UpdateDeclarationsRequest
+    UpdateDeclarationsRequest,
+    FinalizeInspectionRequest,
+    SetDecisionRequest,
 )
 
 from ..dependencies.auth_dependency import get_approved_inspector
@@ -33,6 +35,7 @@ from ..services.inspection_population_service import (
 )
 
 from ..services.report_service import (
+    apply_inspector_decision,
     finalize_inspection_and_create_report,
     generate_pdf_report_bytes,
     generate_json_report,
@@ -1113,9 +1116,55 @@ def get_inspection_findings(
 
 # FINALIZE INSPECTION
 
+@router.post("/{inspection_id}/decision")
+def set_inspection_decision(
+    inspection_id: int,
+    body: SetDecisionRequest,
+    current_inspector: Inspector = Depends(get_approved_inspector),
+    db: Session = Depends(get_db)
+):
+    inspection = (
+        db.query(Inspection)
+        .filter(
+            Inspection.id == inspection_id,
+            Inspection.inspector_id == current_inspector.id
+        )
+        .first()
+    )
+
+    if not inspection:
+        raise HTTPException(
+            status_code=404,
+            detail="Inspection not found"
+        )
+
+    updated_inspection = apply_inspector_decision(
+        db=db,
+        inspection_id=inspection_id,
+        decision=body.decision,
+        remarks=body.remarks,
+    )
+
+    log_action(
+        db,
+        action="SET_INSPECTION_DECISION",
+        inspection_id=inspection_id,
+        inspector_id=current_inspector.id,
+        details=f"Decision: {updated_inspection.compliance_result}"
+    )
+
+    return {
+        "message": "Inspection decision updated successfully",
+        "inspection_id": updated_inspection.id,
+        "compliance_result": updated_inspection.compliance_result,
+        "status": updated_inspection.status,
+    }
+
+
 @router.post("/{inspection_id}/finalize")
 def finalize_inspection_endpoint(
     inspection_id: int,
+    body: Optional[FinalizeInspectionRequest] = None,
     current_inspector: Inspector = Depends(get_approved_inspector),
     db: Session = Depends(get_db)
 ):
@@ -1141,10 +1190,15 @@ def finalize_inspection_endpoint(
             detail="Inspection is already finalized."
         )
 
+    decision = body.decision if body else None
+    remarks = body.remarks if body else None
+
     finalized_inspection, report = (
         finalize_inspection_and_create_report(
             db=db,
-            inspection_id=inspection_id
+            inspection_id=inspection_id,
+            decision=decision,
+            remarks=remarks,
         )
     )
 
@@ -1154,8 +1208,8 @@ def finalize_inspection_endpoint(
         inspection_id=inspection_id,
         inspector_id=current_inspector.id,
         details=(
-            f"Canonical Hash: "
-            f"{finalized_inspection.canonical_hash}"
+            f"Decision: {finalized_inspection.compliance_result} | "
+            f"Canonical Hash: {finalized_inspection.canonical_hash}"
         )
     )
 

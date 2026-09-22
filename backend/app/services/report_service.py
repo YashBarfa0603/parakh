@@ -618,11 +618,59 @@ def generate_pdf_report_bytes(
 
     return buffer.getvalue()
 
+# APPLY INSPECTOR DECISION
+
+def apply_inspector_decision(
+    db: Session,
+    inspection_id: int,
+    decision: str,
+    remarks: Optional[str] = None,
+) -> Inspection:
+    inspection = (
+        db.query(Inspection)
+        .filter(Inspection.id == inspection_id)
+        .first()
+    )
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    if inspection.status == "FINALIZED":
+        raise HTTPException(status_code=400, detail="Cannot alter decision of a finalized inspection.")
+
+    norm_decision = decision.strip().upper()
+    if norm_decision in ("COMPLIANT", "PASS"):
+        norm_decision = "PASS"
+    elif norm_decision in ("NON-COMPLIANT", "NON_COMPLIANT", "FAIL"):
+        norm_decision = "FAIL"
+    else:
+        norm_decision = "REVIEW"
+
+    inspection.compliance_result = norm_decision
+
+    findings = (
+        db.query(ComplianceFinding)
+        .filter(ComplianceFinding.inspection_id == inspection_id)
+        .all()
+    )
+    if norm_decision == "PASS":
+        for f in findings:
+            if f.result == "REVIEW":
+                f.result = "PASS"
+                f.reason = f"Verified and cleared by Legal Metrology Officer{': ' + remarks if remarks else ''}"
+                if not f.evidence:
+                    f.evidence = "Physical package verified by officer"
+
+    db.commit()
+    db.refresh(inspection)
+    return inspection
+
+
 # FINALIZE INSPECTION + CREATE REPORT
 
 def finalize_inspection_and_create_report(
     db: Session,
     inspection_id: int,
+    decision: Optional[str] = None,
+    remarks: Optional[str] = None,
 ) -> Tuple[Inspection, InspectionReport]:
 
     # Fetch inspection
@@ -661,6 +709,26 @@ def finalize_inspection_and_create_report(
         )
         .all()
     )
+
+    # Apply inspector decision override if provided
+    if decision and str(decision).strip():
+        norm_decision = str(decision).strip().upper()
+        if norm_decision in ("COMPLIANT", "PASS"):
+            norm_decision = "PASS"
+        elif norm_decision in ("NON-COMPLIANT", "NON_COMPLIANT", "FAIL"):
+            norm_decision = "FAIL"
+        else:
+            norm_decision = "REVIEW"
+
+        inspection.compliance_result = norm_decision
+
+        if norm_decision == "PASS":
+            for f in findings:
+                if f.result == "REVIEW":
+                    f.result = "PASS"
+                    f.reason = f"Verified and cleared by Legal Metrology Officer{': ' + remarks if remarks else ''}"
+                    if not f.evidence:
+                        f.evidence = "Physical package verified by officer"
 
     images = (
         db.query(InspectionImage)

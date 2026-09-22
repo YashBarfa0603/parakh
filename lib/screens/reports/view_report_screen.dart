@@ -60,7 +60,11 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
       _decisionError = null;
     });
     try {
-      final report = await InspectionService().finalizeInspection(widget.inspectionId);
+      final report = await InspectionService().finalizeInspection(
+        widget.inspectionId,
+        decision: _selectedDecision,
+        remarks: _remarksController.text.trim(),
+      );
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed(
         AppRoutes.inspectionComplete,
@@ -369,13 +373,17 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
   // Compliance summary
   Widget _buildComplianceSummary(InspectionModel ins, int fail, int review,
       int pass, int total) {
-    final status = ins.complianceStatus;
+    final effectiveStatus = _selectedDecision != null
+        ? ComplianceStatus.fromBackend(_selectedDecision)
+        : ins.complianceStatus;
+    final isOfficerOverride = _selectedDecision != null && !ins.isFinalized;
+
     Color statusColor;
     Color statusBg;
     String statusLabel;
     IconData statusIcon;
 
-    switch (status) {
+    switch (effectiveStatus) {
       case ComplianceStatus.compliant:
         statusColor = ParakhColors.compliant;
         statusBg = ParakhColors.compliantLight;
@@ -400,6 +408,13 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
         statusLabel = 'PENDING';
         statusIcon = Icons.hourglass_empty_rounded;
     }
+
+    final effectivePass = isOfficerOverride && effectiveStatus == ComplianceStatus.compliant
+        ? total - fail
+        : pass;
+    final effectiveReview = isOfficerOverride && effectiveStatus == ComplianceStatus.compliant
+        ? 0
+        : review;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -428,7 +443,9 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
                     ),
                   ),
                   Text(
-                    'Compliance Result',
+                    isOfficerOverride
+                        ? 'Officer Decision (Selected)'
+                        : 'Compliance Result',
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 12,
@@ -449,11 +466,11 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
                 _SummaryCount(
                     label: 'Checked', value: total, color: ParakhColors.textSecondary),
                 _SummaryCount(
-                    label: 'Passed', value: pass, color: ParakhColors.compliant),
+                    label: 'Passed', value: effectivePass, color: ParakhColors.compliant),
                 _SummaryCount(
                     label: 'Failed', value: fail, color: ParakhColors.nonCompliant),
                 _SummaryCount(
-                    label: 'Review', value: review, color: ParakhColors.needsReview),
+                    label: 'Review', value: effectiveReview, color: ParakhColors.needsReview),
               ],
             ),
           ],
@@ -1319,10 +1336,20 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
                           color: ParakhColors.compliant,
                           bgColor: ParakhColors.compliantLight,
                           isSelected: _selectedDecision == 'PASS',
-                          onTap: () => setState(() {
-                            _selectedDecision = 'PASS';
-                            _decisionError = null;
-                          }),
+                          onTap: () async {
+                            setState(() {
+                              _selectedDecision = 'PASS';
+                              _decisionError = null;
+                            });
+                            try {
+                              final updated = await InspectionService().setDecision(
+                                widget.inspectionId,
+                                'PASS',
+                                remarks: _remarksController.text.trim(),
+                              );
+                              if (mounted) setState(() => _inspection = updated);
+                            } catch (_) {}
+                          },
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -1333,10 +1360,20 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
                           color: ParakhColors.nonCompliant,
                           bgColor: ParakhColors.nonCompliantLight,
                           isSelected: _selectedDecision == 'FAIL',
-                          onTap: () => setState(() {
-                            _selectedDecision = 'FAIL';
-                            _decisionError = null;
-                          }),
+                          onTap: () async {
+                            setState(() {
+                              _selectedDecision = 'FAIL';
+                              _decisionError = null;
+                            });
+                            try {
+                              final updated = await InspectionService().setDecision(
+                                widget.inspectionId,
+                                'FAIL',
+                                remarks: _remarksController.text.trim(),
+                              );
+                              if (mounted) setState(() => _inspection = updated);
+                            } catch (_) {}
+                          },
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -1347,10 +1384,20 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
                           color: ParakhColors.needsReview,
                           bgColor: ParakhColors.needsReviewLight,
                           isSelected: _selectedDecision == 'REVIEW',
-                          onTap: () => setState(() {
-                            _selectedDecision = 'REVIEW';
-                            _decisionError = null;
-                          }),
+                          onTap: () async {
+                            setState(() {
+                              _selectedDecision = 'REVIEW';
+                              _decisionError = null;
+                            });
+                            try {
+                              final updated = await InspectionService().setDecision(
+                                widget.inspectionId,
+                                'REVIEW',
+                                remarks: _remarksController.text.trim(),
+                              );
+                              if (mounted) setState(() => _inspection = updated);
+                            } catch (_) {}
+                          },
                         ),
                       ),
                     ],

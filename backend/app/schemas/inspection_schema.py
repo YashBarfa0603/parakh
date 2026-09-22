@@ -34,6 +34,16 @@ class UpdateDeclarationsRequest(BaseModel):
     declarations: List[DeclarationItemSchema]
 
 
+class SetDecisionRequest(BaseModel):
+    decision: str  # "PASS", "FAIL", "REVIEW"
+    remarks: Optional[str] = None
+
+
+class FinalizeInspectionRequest(BaseModel):
+    decision: Optional[str] = None  # "PASS", "FAIL", "REVIEW"
+    remarks: Optional[str] = None
+
+
 class FinalizeInspectionResponse(BaseModel):
     message: str
     inspection_id: int

@@ -253,10 +253,33 @@ class InspectionService {
     }
   }
 
-  /// Finalize inspection and generate locked PDF report
-  Future<ReportModel> finalizeInspection(int inspectionId) async {
+  /// Set officer decision (PASS, FAIL, REVIEW)
+  Future<InspectionModel> setDecision(int inspectionId, String decision, {String? remarks}) async {
     try {
-      final response = await _apiService.dio.post('/inspections/$inspectionId/finalize');
+      await _apiService.dio.post(
+        '/inspections/$inspectionId/decision',
+        data: {
+          'decision': decision,
+          if (remarks != null && remarks.isNotEmpty) 'remarks': remarks,
+        },
+      );
+      return await getInspection(inspectionId);
+    } on DioException catch (e) {
+      final detail = e.response?.data is Map ? e.response?.data['detail'] : null;
+      throw Exception(detail ?? e.message ?? 'Failed to update inspection decision.');
+    }
+  }
+
+  /// Finalize inspection and generate locked PDF report
+  Future<ReportModel> finalizeInspection(int inspectionId, {String? decision, String? remarks}) async {
+    try {
+      final response = await _apiService.dio.post(
+        '/inspections/$inspectionId/finalize',
+        data: {
+          if (decision != null && decision.isNotEmpty) 'decision': decision,
+          if (remarks != null && remarks.isNotEmpty) 'remarks': remarks,
+        },
+      );
       final report = ReportModel.fromJson(response.data);
       // Refresh inspection status
       await getInspection(inspectionId);

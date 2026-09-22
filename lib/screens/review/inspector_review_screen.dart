@@ -67,7 +67,11 @@ class _InspectorReviewScreenState extends State<InspectorReviewScreen> {
     });
 
     try {
-      final report = await InspectionService().finalizeInspection(widget.inspectionId);
+      final report = await InspectionService().finalizeInspection(
+        widget.inspectionId,
+        decision: 'PASS',
+        remarks: _remarksController.text.trim(),
+      );
 
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed(
