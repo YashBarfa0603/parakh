@@ -61,6 +61,20 @@ class BatchModel {
     this.bestBefore,
   });
 
+  String? get displayManufacturingDate {
+    if (manufacturingDate != null && manufacturingDate!.trim().isNotEmpty) {
+      return manufacturingDate;
+    }
+    return rawManufacturingDate;
+  }
+
+  String? get displayExpiryDate {
+    if (expiryDate != null && expiryDate!.trim().isNotEmpty) {
+      return expiryDate;
+    }
+    return rawExpiryDate ?? bestBefore;
+  }
+
   factory BatchModel.fromJson(Map<String, dynamic> json) {
     return BatchModel(
       batchNumber: json['batch_number']?.toString(),

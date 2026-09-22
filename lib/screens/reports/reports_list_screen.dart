@@ -46,8 +46,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
 
   Future<void> _refresh() async {
     setState(() => _isRefreshing = true);
-    // cachedInspections is the local cache; rebuild from it
-    await Future.delayed(const Duration(milliseconds: 300));
+    await InspectionService().fetchMyInspections();
     if (mounted) setState(() => _isRefreshing = false);
   }
 

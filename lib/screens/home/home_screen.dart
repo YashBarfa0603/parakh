@@ -26,10 +26,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadData() async {
-    _inspector = await AuthServices().getCurrentInspector();
+    final inspector = await AuthServices().getCurrentInspector(forceRefresh: true);
+    if (inspector != null) {
+      await InspectionService().fetchMyInspections(inspectorId: inspector.id);
+    } else {
+      await InspectionService().clearUserSession();
+    }
     if (mounted) {
       setState(() {
-        _inspections = InspectionService().cachedInspections;
+        _inspector = inspector;
+        _inspections = List.from(InspectionService().cachedInspections);
       });
     }
   }
@@ -579,25 +585,79 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }).toList();
     }
-    // Placeholder when empty
+    // Clean empty state for accounts with no inspection records
     return [
-      _InspectionRow(
-        title: 'Britannia Biscuit Pack',
-        subtitle: 'ID: #1021  ·  Today, 10:30 AM',
-        status: ComplianceStatus.compliant,
-        onTap: _startNewInspection,
-      ),
-      _InspectionRow(
-        title: 'Fortune Cooking Oil',
-        subtitle: 'ID: #1020  ·  Today, 09:15 AM',
-        status: ComplianceStatus.nonCompliant,
-        onTap: _startNewInspection,
-      ),
-      _InspectionRow(
-        title: 'Amul Milk Packet',
-        subtitle: 'ID: #1019  ·  Yesterday, 04:20 PM',
-        status: ComplianceStatus.needsReview,
-        onTap: _startNewInspection,
+      Container(
+        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+        decoration: BoxDecoration(
+          color: ParakhColors.surface,
+          borderRadius: BorderRadius.circular(ParakhRadius.card),
+          border: Border.all(color: ParakhColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: ParakhColors.shadow,
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: ParakhColors.veryLightBlue,
+                shape: BoxShape.circle,
+                border: Border.all(color: ParakhColors.softBlue),
+              ),
+              child: const Icon(
+                Icons.inventory_2_outlined,
+                color: ParakhColors.accent,
+                size: 26,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'No inspections yet',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: ParakhColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Start your first field inspection by scanning a packaged commodity.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12,
+                color: ParakhColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _startNewInspection,
+              icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+              label: const Text('New Inspection'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: ParakhColors.accent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                textStyle: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     ];
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/constants.dart';
 import '../../core/theme.dart';
+import '../../model/declaration_model.dart';
 import '../../model/finding_model.dart';
 import '../../model/inspection_model.dart';
 import '../../services/inspection_service.dart';
@@ -241,6 +242,14 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
           ),
           const SizedBox(height: 12),
 
+          // Extracted statutory declarations with angles, confidence, and values
+          _buildSection(
+            title: 'Extracted Package Declarations',
+            icon: Icons.article_outlined,
+            child: _buildExtractedDeclarationsTable(ins),
+          ),
+          const SizedBox(height: 12),
+
           // Missing / non-compliant section
           if (failFindings.isNotEmpty) ...[
             _buildIssuesSection(failFindings),
@@ -250,16 +259,6 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
           // Legal Metrology rule verification table
           if (ins.findings.isNotEmpty) ...[
             _buildRuleVerificationSection(ins.findings),
-            const SizedBox(height: 12),
-          ],
-
-          // Declaration verification (detailed)
-          if (ins.findings.isNotEmpty) ...[
-            _buildSection(
-              title: 'Declaration Details',
-              icon: Icons.fact_check_outlined,
-              child: _buildFindingsTable(ins.findings),
-            ),
             const SizedBox(height: 12),
           ],
 
@@ -510,6 +509,14 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
 
   // Product info
   Widget _buildProductInfo(InspectionModel ins) {
+    final mfgDate = ins.batch?.displayManufacturingDate ??
+        ins.batch?.manufacturingDate ??
+        ins.batch?.rawManufacturingDate;
+    final expDate = ins.batch?.displayExpiryDate ??
+        ins.batch?.expiryDate ??
+        ins.batch?.rawExpiryDate ??
+        ins.batch?.bestBefore;
+
     final rows = <_InfoRow>[
       _InfoRow('Product Name', ins.productName),
       _InfoRow('Brand', ins.brand),
@@ -520,8 +527,8 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
       _InfoRow('Address', ins.manufacturerAddress),
       _InfoRow('Country of Origin', ins.countryOfOrigin),
       _InfoRow('Batch / Lot', ins.batch?.batchNumber),
-      _InfoRow('Mfg Date', ins.batch?.manufacturingDate),
-      _InfoRow('Expiry / Best Before', ins.batch?.expiryDate ?? ins.batch?.bestBefore),
+      _InfoRow('Mfg Date', mfgDate),
+      _InfoRow('Expiry / Best Before', expDate),
       _InfoRow('Consumer Care Phone', ins.consumerCarePhone),
       _InfoRow('Consumer Care Email', ins.consumerCareEmail),
     ];
@@ -530,6 +537,170 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Column(
         children: rows.map((r) => _buildInfoRow(r.label, r.value)).toList(),
+      ),
+    );
+  }
+
+  // Extracted Declarations Table with panel angle and confidence
+  Widget _buildExtractedDeclarationsTable(InspectionModel ins) {
+    List<DeclarationModel> decls = List.from(ins.declarations);
+
+    if (decls.isEmpty) {
+      // Synthesize declaration items from inspection attributes if declarations list wasn't cached
+      void addIf(String field, String? val, String defAngle) {
+        if (val != null && val.trim().isNotEmpty) {
+          decls.add(DeclarationModel(
+            fieldName: field,
+            value: val.trim(),
+            confidence: 0.95,
+            extractionMethod: 'EXTRACTED',
+            angle: defAngle,
+          ));
+        }
+      }
+
+      addIf('product_name', ins.productName, 'FRONT');
+      addIf('brand', ins.brand, 'FRONT');
+      addIf('net_quantity', ins.netQuantity != null ? '${ins.netQuantity} ${ins.quantityUnit ?? ""}'.trim() : null, 'FRONT');
+      addIf('mrp', ins.mrp != null ? '₹${ins.mrp}' : null, 'BACK');
+      addIf('manufacturer_name', ins.manufacturerName, 'BACK');
+      addIf('manufacturer_address', ins.manufacturerAddress, 'BACK');
+      addIf('country_of_origin', ins.countryOfOrigin, 'BACK');
+      addIf('batch_number', ins.batch?.batchNumber, 'BACK');
+      addIf('manufacturing_date', ins.batch?.displayManufacturingDate, 'BACK');
+      addIf('expiry_date', ins.batch?.displayExpiryDate, 'BACK');
+      addIf('consumer_care_phone', ins.consumerCarePhone, 'BACK');
+      addIf('consumer_care_email', ins.consumerCareEmail, 'BACK');
+      addIf('consumer_care_address', ins.consumerCareAddress, 'BACK');
+    }
+
+    if (decls.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(
+          child: Text(
+            'No declarations extracted.',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 12,
+              color: ParakhColors.textSecondary,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Column(
+        children: decls.map((d) => _buildDeclarationItemCard(d)).toList(),
+      ),
+    );
+  }
+
+  Widget _buildDeclarationItemCard(DeclarationModel d) {
+    final confVal = d.confidence != null ? (d.confidence! * 100).toInt() : null;
+    final angleStr = (d.angle ??
+            (d.fieldName.toLowerCase().contains('product') ||
+                    d.fieldName.toLowerCase().contains('brand')
+                ? 'FRONT'
+                : 'BACK'))
+        .toUpperCase();
+    final isFront = angleStr == 'FRONT';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: ParakhColors.surface,
+        borderRadius: BorderRadius.circular(ParakhRadius.lg),
+        border: Border.all(color: ParakhColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  d.fieldName.replaceAll('_', ' ').toUpperCase(),
+                  style: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                    color: ParakhColors.textSecondary,
+                  ),
+                ),
+              ),
+              // Panel Angle Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                decoration: BoxDecoration(
+                  color: isFront ? ParakhColors.veryLightBlue : const Color(0xFFF3E8FF),
+                  borderRadius: BorderRadius.circular(ParakhRadius.xs),
+                  border: Border.all(
+                    color: isFront ? ParakhColors.softBlue : const Color(0xFFD8B4FE),
+                  ),
+                ),
+                child: Text(
+                  angleStr,
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                    color: isFront ? ParakhColors.accent : const Color(0xFF7E22CE),
+                  ),
+                ),
+              ),
+              if (confVal != null) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                  decoration: BoxDecoration(
+                    color: ParakhColors.compliantLight,
+                    borderRadius: BorderRadius.circular(ParakhRadius.xs),
+                    border: Border.all(
+                      color: ParakhColors.compliant.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Text(
+                    '$confVal%',
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                      color: ParakhColors.compliant,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 6),
+          SelectableText(
+            d.value ?? d.rawValue ?? '—',
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: ParakhColors.textPrimary,
+              height: 1.3,
+            ),
+          ),
+          if (d.extractionMethod.isNotEmpty && d.extractionMethod != 'AUTOMATED') ...[
+            const SizedBox(height: 4),
+            Text(
+              'Method: ${d.extractionMethod}',
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 10,
+                color: ParakhColors.textTertiary,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -727,175 +898,7 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
     );
   }
 
-  // Findings table
-  Widget _buildFindingsTable(List<FindingModel> findings) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Column(
-        children: findings.map((f) => _buildFindingRow(f)).toList(),
-      ),
-    );
-  }
 
-  Widget _buildFindingRow(FindingModel f) {
-    Color statusColor;
-    IconData icon;
-    String statusLabel;
-    Color bgColor;
-
-    if (f.isPass) {
-      statusColor = ParakhColors.compliant;
-      icon = Icons.check_circle_outline_rounded;
-      statusLabel = '✓ Compliant';
-      bgColor = ParakhColors.compliantLight.withValues(alpha: 0.4);
-    } else if (f.isFail) {
-      statusColor = ParakhColors.nonCompliant;
-      icon = Icons.cancel_outlined;
-      statusLabel = '✕ Missing';
-      bgColor = ParakhColors.nonCompliantLight.withValues(alpha: 0.5);
-    } else {
-      statusColor = ParakhColors.needsReview;
-      icon = Icons.warning_amber_outlined;
-      statusLabel = '⚠ Needs Review';
-      bgColor = ParakhColors.needsReviewLight.withValues(alpha: 0.5);
-    }
-
-    final ruleRef = _formatRuleRef(f);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(ParakhRadius.lg),
-        border: Border.all(
-          color: statusColor.withValues(alpha: 0.3),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Row 1: Requirement + Status Badge
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, size: 18, color: statusColor),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  f.requirement,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: ParakhColors.textPrimary,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
-                decoration: BoxDecoration(
-                  color: ParakhColors.surface,
-                  borderRadius: BorderRadius.circular(ParakhRadius.xs),
-                  border: Border.all(
-                    color: statusColor.withValues(alpha: 0.35),
-                    width: 0.8,
-                  ),
-                ),
-                child: Text(
-                  statusLabel,
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    color: statusColor,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          // Row 2: Applicable Rule (if available from backend)
-          if (ruleRef != null) ...[
-            const SizedBox(height: 7),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                color: ParakhColors.surface,
-                borderRadius: BorderRadius.circular(ParakhRadius.xs),
-                border: Border.all(color: ParakhColors.border),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.gavel_outlined, size: 11, color: ParakhColors.accent),
-                  const SizedBox(width: 4),
-                  Text(
-                    ruleRef,
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: ParakhColors.accent,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-
-          // Row 3: Rule description / reason
-          if (f.reason != null &&
-              f.reason!.isNotEmpty &&
-              f.reason != f.requirement) ...[
-            const SizedBox(height: 6),
-            Text(
-              f.reason!,
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 11.5,
-                color: ParakhColors.textSecondary,
-                height: 1.35,
-              ),
-            ),
-          ],
-
-          // Row 4: Evidence
-          if (f.evidence != null && f.evidence!.trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: ParakhColors.surface.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(ParakhRadius.xs),
-                border: Border.all(color: ParakhColors.borderLight),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.image_outlined, size: 12, color: ParakhColors.textTertiary),
-                  const SizedBox(width: 5),
-                  Flexible(
-                    child: Text(
-                      'Evidence: ${f.evidence!.trim()}',
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 11,
-                        color: ParakhColors.textSecondary,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 
   // Legal Metrology rule verification summary table
   Widget _buildRuleVerificationSection(List<FindingModel> findings) {

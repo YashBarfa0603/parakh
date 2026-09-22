@@ -78,8 +78,15 @@ def populate_inspection_and_batch_from_declarations(
         raw_mfg = raw_map.get("MANUFACTURING_DATE", decl_map["MANUFACTURING_DATE"])
         batch.raw_manufacturing_date = raw_mfg
         parsed_mfg = parse_date_string(raw_mfg)
-        if isinstance(parsed_mfg, dict) and parsed_mfg.get("date"):
-            batch.manufacturing_date = parsed_mfg["date"]
+        if isinstance(parsed_mfg, dict):
+            try:
+                y = int(parsed_mfg.get("year", 0))
+                m = int(parsed_mfg.get("month", 1))
+                d = int(parsed_mfg.get("day", 1))
+                if y > 1900 and 1 <= m <= 12 and 1 <= d <= 31:
+                    batch.manufacturing_date = datetime(y, m, d)
+            except Exception:
+                pass
         elif isinstance(parsed_mfg, datetime):
             batch.manufacturing_date = parsed_mfg
 
@@ -87,8 +94,15 @@ def populate_inspection_and_batch_from_declarations(
         raw_exp = raw_map.get("EXPIRY_DATE", decl_map["EXPIRY_DATE"])
         batch.raw_expiry_date = raw_exp
         parsed_exp = parse_date_string(raw_exp)
-        if isinstance(parsed_exp, dict) and parsed_exp.get("date"):
-            batch.expiry_date = parsed_exp["date"]
+        if isinstance(parsed_exp, dict):
+            try:
+                y = int(parsed_exp.get("year", 0))
+                m = int(parsed_exp.get("month", 1))
+                d = int(parsed_exp.get("day", 1))
+                if y > 1900 and 1 <= m <= 12 and 1 <= d <= 31:
+                    batch.expiry_date = datetime(y, m, d)
+            except Exception:
+                pass
         elif isinstance(parsed_exp, datetime):
             batch.expiry_date = parsed_exp
 

@@ -235,6 +235,9 @@ def run_ner(ocr_items: list) -> dict[str, str | None]:
                 raw_text = line.text.strip()
                 if _is_certification_line(raw_text) or _is_noisy(raw_text):
                     continue
+                # Skip lines that are quantity, price, or date declarations
+                if re.search(r"\b(net\s*(?:wt|weight|qty|quantity)?|mrp|rs\.?|inr|pkd|mfd|exp)\b", raw_text, re.IGNORECASE):
+                    continue
                 # Filter individual tokens within the line
                 clean_tokens = []
                 for token in raw_text.split():
@@ -244,8 +247,8 @@ def run_ner(ocr_items: list) -> dict[str, str | None]:
                     # Skip expiry junk tokens
                     if re.match(r"^[A-Z0-9]{1,3}[Ee8Bb]$", token) and len(token) <= 4:
                         continue
-                    # Skip standalone 1-2 char stop words
-                    if token.upper() in {"BY", "OF", "AT", "AS", "IN", "ON", "TO", "BE"}:
+                    # Skip standalone 1-2 char stop words or quantity units
+                    if token.upper() in {"BY", "OF", "AT", "AS", "IN", "ON", "TO", "BE", "NET", "WT", "WT.", "WEIGHT", "QTY", "QUANTITY", "G", "GM", "GMS", "KG", "ML", "LTR"}:
                         continue
                     # Skip pure number tokens
                     if re.match(r"^\d+[\d:./]*$", token):
@@ -349,34 +352,42 @@ def merge_ner_with_regex(
     merged: list[dict] = []
     ner_fields_handled = set()
 
-    # Fields where NER should override unless regex confidence is high
-    ner_override_fields = {"product_name", "brand", "net_quantity"}
+    # Fields where NER should override heuristic unless regex confidence is high
+    ner_override_fields = {"product_name", "brand"}
 
     for field, ner_value in ner_result.items():
         ner_fields_handled.add(field)
 
-        if ner_value is None:
+        if not ner_value or not str(ner_value).strip():
             # NER found nothing — keep regex result if any
             if field in regex_map:
                 merged.append(regex_map[field])
             continue
 
+        clean_ner_value = str(ner_value).strip()
         regex_hit = regex_map.get(field)
 
         if regex_hit:
             regex_conf = regex_hit.get("confidence") or 0
+
+            # Never allow NER to override valid regex net_quantity
+            if field == "net_quantity" and regex_conf >= 0.50:
+                merged.append(regex_hit)
+                continue
+
             if field in ner_override_fields and regex_conf < 0.85:
                 # Override heuristic with NER
                 merged.append({
                     "field_name": field,
-                    "value": ner_value,
-                    "raw_value": ner_value,
+                    "value": clean_ner_value,
+                    "raw_value": clean_ner_value,
                     "confidence": 0.78,
-                    "source_image_id": None,
-                    "source_ocr_item_ids": [],
-                    "evidence_text": ner_value,
-                    "bbox": None,
+                    "source_image_id": regex_hit.get("source_image_id"),
+                    "source_ocr_item_ids": regex_hit.get("source_ocr_item_ids", []),
+                    "evidence_text": clean_ner_value,
+                    "bbox": regex_hit.get("bbox"),
                     "extraction_method": "NER",
+                    "angle": regex_hit.get("angle", "FRONT"),
                 })
             else:
                 # Keep the good regex result
@@ -385,14 +396,15 @@ def merge_ner_with_regex(
             # NER found something regex missed
             merged.append({
                 "field_name": field,
-                "value": ner_value,
-                "raw_value": ner_value,
+                "value": clean_ner_value,
+                "raw_value": clean_ner_value,
                 "confidence": 0.78,
                 "source_image_id": None,
                 "source_ocr_item_ids": [],
-                "evidence_text": ner_value,
+                "evidence_text": clean_ner_value,
                 "bbox": None,
                 "extraction_method": "NER",
+                "angle": "FRONT",
             })
 
     # Add any regex fields that NER didn't touch

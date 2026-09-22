@@ -102,6 +102,125 @@ def create_inspection(
         "status": inspection.status
     }
 
+# LIST INSPECTIONS (AUTHENTICATED INSPECTOR ONLY)
+
+@router.get("/")
+@router.get("")
+def list_my_inspections(
+    current_inspector: Inspector = Depends(get_approved_inspector),
+    db: Session = Depends(get_db)
+):
+    inspections = (
+        db.query(Inspection)
+        .filter(Inspection.inspector_id == current_inspector.id)
+        .order_by(Inspection.created_at.desc(), Inspection.id.desc())
+        .all()
+    )
+
+    results = []
+    for inspection in inspections:
+        batch = (
+            db.query(Batch)
+            .filter(Batch.inspection_id == inspection.id)
+            .first()
+        )
+        images = (
+            db.query(InspectionImage)
+            .filter(
+                InspectionImage.inspection_id == inspection.id,
+                InspectionImage.is_active.is_(True)
+            )
+            .all()
+        )
+        findings = (
+            db.query(ComplianceFinding)
+            .filter(ComplianceFinding.inspection_id == inspection.id)
+            .all()
+        )
+        declarations = (
+            db.query(InspectionDeclaration)
+            .filter(InspectionDeclaration.inspection_id == inspection.id)
+            .all()
+        )
+
+        results.append({
+            "id": inspection.id,
+            "inspector_id": inspection.inspector_id,
+            "status": inspection.status,
+            "compliance_result": inspection.compliance_result,
+
+            "product_name": inspection.product_name,
+            "product_code": inspection.product_code,
+            "brand": inspection.brand,
+
+            "manufacturer_name": inspection.manufacturer_name,
+            "manufacturer_address": inspection.manufacturer_address,
+
+            "net_quantity": inspection.net_quantity,
+            "quantity_unit": inspection.quantity_unit,
+
+            "mrp": inspection.mrp,
+            "mrp_inclusive_of_taxes": inspection.mrp_inclusive_of_taxes,
+
+            "consumer_care_phone": inspection.consumer_care_phone,
+            "consumer_care_email": inspection.consumer_care_email,
+            "consumer_care_address": inspection.consumer_care_address,
+
+            "country_of_origin": inspection.country_of_origin,
+            "category": inspection.category,
+            "commodity_type": inspection.commodity_type,
+
+            "importer_name": inspection.importer_name,
+            "importer_address": inspection.importer_address,
+
+            "canonical_hash": inspection.canonical_hash,
+            "finalized_at": inspection.finalized_at,
+            "processing_error": inspection.processing_error,
+
+            "created_at": inspection.created_at,
+            "updated_at": inspection.updated_at,
+
+            "batch": {
+                "batch_number": batch.batch_number if batch else None,
+                "manufacturing_date": batch.manufacturing_date if batch else None,
+                "raw_manufacturing_date": batch.raw_manufacturing_date if batch else None,
+                "expiry_date": batch.expiry_date if batch else None,
+                "raw_expiry_date": batch.raw_expiry_date if batch else None,
+                "best_before": batch.best_before if batch else None
+            } if batch else None,
+
+            "declarations_count": len(declarations),
+            "findings_count": len(findings),
+
+            "findings": [
+                {
+                    "id": f.id,
+                    "rule_id": f.rule_id,
+                    "rule_number": f.rule_number,
+                    "clause": f.clause,
+                    "requirement": f.requirement,
+                    "result": f.result,
+                    "evidence": f.evidence,
+                    "reason": f.reason,
+                }
+                for f in findings
+            ],
+
+            "images": [
+                {
+                    "id": img.id,
+                    "angle": img.angle,
+                    "image_url": img.image_url,
+                    "sha256": img.sha256,
+                    "quality": img.quality,
+                    "authenticity_status": img.authenticity_status,
+                }
+                for img in images
+            ],
+        })
+
+    return results
+
 # UPLOAD INSPECTION IMAGE
 
 @router.post("/{inspection_id}/images")
@@ -522,6 +641,11 @@ def get_inspection_details(
         .first()
     )
 
+    image_angle_map = {
+        img.id: (img.angle or "UNKNOWN").upper()
+        for img in images
+    }
+
     return {
         "id": inspection.id,
         "inspector_id": inspection.inspector_id,
@@ -575,8 +699,9 @@ def get_inspection_details(
             if batch else None,
 
             "manufacturing_date": (
-                batch.manufacturing_date
-                if batch else None
+                batch.manufacturing_date.strftime("%m/%Y")
+                if batch and batch.manufacturing_date
+                else (batch.raw_manufacturing_date if batch else None)
             ),
 
             "raw_manufacturing_date": (
@@ -585,8 +710,9 @@ def get_inspection_details(
             ),
 
             "expiry_date": (
-                batch.expiry_date
-                if batch else None
+                batch.expiry_date.strftime("%m/%Y")
+                if batch and batch.expiry_date
+                else (batch.raw_expiry_date if batch else None)
             ),
 
             "raw_expiry_date": (
@@ -602,6 +728,28 @@ def get_inspection_details(
         } if batch else None,
 
         "declarations_count": len(declarations),
+        "declarations": [
+            {
+                "id": declaration.id,
+                "field_name": declaration.field_name,
+                "value": declaration.value,
+                "raw_value": declaration.raw_value,
+                "confidence": (
+                    declaration.extraction_confidence
+                    or declaration.confidence
+                ),
+                "extraction_method": declaration.extraction_method,
+                "status": declaration.status,
+                "source_image_id": declaration.source_image_id,
+                "angle": image_angle_map.get(
+                    declaration.source_image_id,
+                    "FRONT" if declaration.field_name in ("product_name", "brand") else "BACK"
+                ),
+                "source_ocr_item_id": declaration.source_ocr_item_id,
+                "evidence_text": declaration.evidence_text,
+            }
+            for declaration in declarations
+        ],
         "findings_count": len(findings),
 
         "findings": [
@@ -666,6 +814,18 @@ def get_inspection_declarations(
         .all()
     )
 
+    images = (
+        db.query(InspectionImage)
+        .filter(
+            InspectionImage.inspection_id == inspection_id
+        )
+        .all()
+    )
+    image_angle_map = {
+        img.id: (img.angle or "UNKNOWN").upper()
+        for img in images
+    }
+
     return {
         "inspection_id": inspection_id,
         "count": len(declarations),
@@ -690,6 +850,11 @@ def get_inspection_declarations(
 
                 "source_image_id": (
                     declaration.source_image_id
+                ),
+
+                "angle": image_angle_map.get(
+                    declaration.source_image_id,
+                    "FRONT" if declaration.field_name in ("product_name", "brand") else "BACK"
                 ),
 
                 "source_ocr_item_id": (

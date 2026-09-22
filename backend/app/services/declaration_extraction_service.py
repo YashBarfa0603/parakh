@@ -159,12 +159,17 @@ class OCRLine:
     def upper(self) -> str:
         return self.normalized.upper()
 
-def build_enriched_lines(ocr_items: list, source_image_id: int) -> list[OCRLine]:
+def build_enriched_lines(
+    ocr_items: list,
+    source_image_id: int,
+    angle: Optional[str] = None
+) -> list[OCRLine]:
     grouped = group_ocr_items_into_lines(ocr_items)
     lines = []
     for group in grouped:
         line = OCRLine(group)
         line.source_image_id = source_image_id
+        line.angle = angle
         lines.append(line)
     return lines
 
@@ -183,6 +188,7 @@ class ExtractionResult:
         evidence_text: str = "",
         bbox: Optional[dict] = None,
         extraction_method: str = "REGEX",
+        angle: Optional[str] = None,
     ):
         self.field_name = field_name
         self.value = value
@@ -193,6 +199,7 @@ class ExtractionResult:
         self.evidence_text = evidence_text or value
         self.bbox = bbox
         self.extraction_method = extraction_method
+        self.angle = angle
 
     def to_dict(self) -> dict:
         return {
@@ -205,6 +212,7 @@ class ExtractionResult:
             "evidence_text": self.evidence_text,
             "bbox": self.bbox,
             "extraction_method": self.extraction_method,
+            "angle": self.angle,
         }
 
 # INDIVIDUAL FIELD EXTRACTORS
@@ -369,6 +377,14 @@ def extract_net_quantity(
 
 def extract_net_quantity_contextual(line: OCRLine) -> Optional[ExtractionResult]:
     text = line.normalized
+    # Exclude lines that are part of the nutritional information panel
+    lower_text = text.lower()
+    if any(k in lower_text for k in (
+        "nutrition", "serving", "protein", "fat", "carb", "fiber",
+        "cholesterol", "sugar", "sodium", "energy", "calcium", "iron",
+        "vitamin", "calories", "kcal", "%"
+    )):
+        return None
     match = QUANTITY_WITH_UNIT.search(text)
     if match:
         full_match = match.group(0)
@@ -970,12 +986,20 @@ def extract_product_name_heuristic(
     candidates = [
         line for line in lines
         if line.bbox_height is not None
-        and line.bbox_height > 0
+        and line.bbox_height >= 14
         and len(line.normalized) >= 2
         # Exclude lines that are clearly labels/declarations
         and not _is_new_label(line.normalized)
         # Exclude lines that are just numbers or very short
-        and not re.match(r"^[\d\s.,/\-₹]+$", line.normalized)
+        and not re.match(r"^[\d\s.,/\-₹%:]+$", line.normalized)
+        # Exclude nutritional, packaging, storage, disposal, and legal boilerplate
+        and not any(k in line.normalized.lower() for k in (
+            "nutrition", "serving", "calories", "kcal", "ingredients", "allergen",
+            "disposal", "plastic", "recycle", "fssai", "batch", "mfg", "exp",
+            "best before", "store in", "keep in", "keep refrigerated", "100% veg",
+            "pure veg", "vegetarian", "manufactured", "marketed by", "packed by",
+            "consumer care", "feedback", "helpline", "lic. no", "lic no"
+        ))
     ]
 
     if not candidates:
@@ -1015,11 +1039,21 @@ def extract_brand_heuristic(
     candidates = [
         line for line in lines
         if line.bbox_height is not None
-        and line.bbox_height > 0
+        and line.bbox_height >= 14
         and line.bbox_y is not None
         and len(line.normalized) >= 2
+        # Exclude lines that are clearly labels/declarations
         and not _is_new_label(line.normalized)
-        and not re.match(r"^[\d\s.,/\-₹]+$", line.normalized)
+        # Exclude lines that are just numbers or very short
+        and not re.match(r"^[\d\s.,/\-₹%:]+$", line.normalized)
+        # Exclude promotional, nutritional, and administrative boilerplate
+        and not any(k in line.normalized.lower() for k in (
+            "nutrition", "serving", "ingredients", "allergen", "disposal", "plastic",
+            "recycle", "fssai", "batch", "mfg", "exp", "best before", "store in",
+            "keep in", "keep refrigerated", "100% veg", "pure veg", "vegetarian",
+            "free", "save", "offer", "extra", "pack", "mrp", "rs.", "inr", "manufactured",
+            "marketed by", "packed by", "for sale", "consumer care", "lic. no", "lic no"
+        ))
     ]
 
     if not candidates:
@@ -1049,8 +1083,16 @@ def extract_brand_heuristic(
 
 def extract_all_from_lines(
     lines: list[OCRLine],
+    angle: Optional[str] = None,
 ) -> list[ExtractionResult]:
     results = []
+
+    # Determine panel angle
+    if angle is None and lines:
+        angle = getattr(lines[0], "angle", None)
+    normalized_angle = (angle or "UNKNOWN").upper()
+    is_back_panel = normalized_angle in ("BACK", "INFORMATION_PANEL", "PANEL", "SIDE")
+    is_front_panel = normalized_angle in ("FRONT", "PDP", "PRINCIPAL_DISPLAY_PANEL")
 
     for i, line in enumerate(lines):
         following = lines[i + 1:]
@@ -1170,17 +1212,48 @@ def extract_all_from_lines(
                 results.append(r)
                 break
 
-    # Heuristic product name
-    if "product_name" not in found_fields:
+    # Heuristic product name:
+    # Under Legal Metrology Rules, product identity belongs on the Principal Display Panel (FRONT).
+    # Heuristic product name must NOT run on BACK panel where hero text is "NUTRITION FACTS",
+    # "INGREDIENTS", or manufacturer legal entity.
+    if "product_name" not in found_fields and not is_back_panel:
         r = extract_product_name_heuristic(lines)
         if r:
+            if is_front_panel:
+                r.confidence = max(r.confidence, 0.70)
             results.append(r)
 
-    # Heuristic brand
-    if "brand" not in found_fields:
+    # Heuristic brand:
+    # Brand heuristics (topmost/hero text) should NOT run on BACK panel.
+    if "brand" not in found_fields and not is_back_panel:
         r = extract_brand_heuristic(lines)
         if r:
+            if is_front_panel:
+                r.confidence = max(r.confidence, 0.65)
             results.append(r)
+
+    # Tag all extracted results with source angle
+    for r in results:
+        if not r.angle:
+            r.angle = normalized_angle
+
+    # Boost confidence of declarations based on packaging panel semantics
+    if is_back_panel:
+        back_panel_fields = {
+            "mrp", "mrp_inclusive_of_taxes", "manufacturer_name", "manufacturer_address",
+            "packer_name", "packer_address", "importer_name", "importer_address",
+            "country_of_origin", "manufacturing_date", "expiry_date", "best_before",
+            "batch_number", "consumer_care_phone", "consumer_care_email",
+            "consumer_care_name", "consumer_care_address", "unit_sale_price", "dimensions"
+        }
+        for r in results:
+            if r.field_name in back_panel_fields:
+                r.confidence = min(0.99, (r.confidence or 0.5) + 0.05)
+    elif is_front_panel:
+        front_panel_fields = {"product_name", "brand", "net_quantity"}
+        for r in results:
+            if r.field_name in front_panel_fields:
+                r.confidence = min(0.99, (r.confidence or 0.5) + 0.05)
 
     return results
 
@@ -1188,15 +1261,29 @@ def extract_all_from_lines(
 
 def extract_declarations_from_all_images(
     ocr_items_by_image: dict[int, list],
+    image_angles: Optional[dict[int, str]] = None,
 ) -> list[ExtractionResult]:
     all_results = []
+    if image_angles is None:
+        image_angles = {}
 
     for image_id, ocr_items in ocr_items_by_image.items():
-        lines = build_enriched_lines(ocr_items, image_id)
-        image_results = extract_all_from_lines(lines)
+        if not ocr_items:
+            continue
+        angle = image_angles.get(image_id)
+        if not angle:
+            for it in ocr_items:
+                it_angle = getattr(it, "angle", None)
+                if it_angle:
+                    angle = it_angle
+                    break
+        angle = (angle or "UNKNOWN").upper()
+
+        lines = build_enriched_lines(ocr_items, source_image_id=image_id, angle=angle)
+        image_results = extract_all_from_lines(lines, angle=angle)
         all_results.extend(image_results)
 
-    # Deduplicate: keep highest-confidence result per field
+    # Deduplicate: keep highest-confidence and panel-appropriate result per field
     return deduplicate_extractions(all_results)
 
 def deduplicate_extractions(
@@ -1204,14 +1291,50 @@ def deduplicate_extractions(
 ) -> list[ExtractionResult]:
     best_by_field: dict[str, ExtractionResult] = {}
 
+    front_affinity_fields = {"product_name", "brand"}
+    back_affinity_fields = {
+        "mrp", "mrp_inclusive_of_taxes", "manufacturer_name", "manufacturer_address",
+        "packer_name", "packer_address", "importer_name", "importer_address",
+        "country_of_origin", "manufacturing_date", "expiry_date", "best_before",
+        "batch_number", "consumer_care_phone", "consumer_care_email",
+        "consumer_care_name", "consumer_care_address", "unit_sale_price", "dimensions"
+    }
+
     for result in results:
         field = result.field_name
         if field not in best_by_field:
             best_by_field[field] = result
-        else:
-            existing = best_by_field[field]
-            if result.confidence > existing.confidence:
-                best_by_field[field] = result
+            continue
+
+        existing = best_by_field[field]
+
+        # Calculate comparative score
+        res_score = result.confidence or 0.5
+        exist_score = existing.confidence or 0.5
+
+        res_angle = (result.angle or "UNKNOWN").upper()
+        exist_angle = (existing.angle or "UNKNOWN").upper()
+
+        # Angle preference boosts
+        if field in front_affinity_fields:
+            if res_angle in ("FRONT", "PDP") and exist_angle not in ("FRONT", "PDP"):
+                res_score += 0.25
+            elif exist_angle in ("FRONT", "PDP") and res_angle not in ("FRONT", "PDP"):
+                exist_score += 0.25
+        elif field in back_affinity_fields:
+            if res_angle in ("BACK", "INFORMATION_PANEL", "PANEL") and exist_angle not in ("BACK", "INFORMATION_PANEL", "PANEL"):
+                res_score += 0.15
+            elif exist_angle in ("BACK", "INFORMATION_PANEL", "PANEL") and res_angle not in ("BACK", "INFORMATION_PANEL", "PANEL"):
+                exist_score += 0.15
+
+        # Method preference: explicit REGEX label > HEURISTIC
+        if result.extraction_method == "REGEX" and existing.extraction_method == "HEURISTIC":
+            res_score += 0.10
+        elif existing.extraction_method == "REGEX" and result.extraction_method == "HEURISTIC":
+            exist_score += 0.10
+
+        if res_score > exist_score:
+            best_by_field[field] = result
 
     return list(best_by_field.values())
 
@@ -1227,19 +1350,38 @@ def extract_declarations_from_ocr_items(
     deduped = deduplicate_extractions(results)
     return [r.to_dict() for r in deduped]
 
-def extract_declarations_from_multi_image_ocr(ocr_items: list) -> list[dict]:
+def extract_declarations_from_multi_image_ocr(
+    ocr_items: list,
+    image_ocr_data: Optional[list[dict]] = None,
+) -> list[dict]:
     ocr_items_by_image: dict[int, list] = {}
-    for item in ocr_items:
-        img_id = getattr(item, "source_image_id", None)
-        if not img_id and hasattr(item, "ocr_result") and item.ocr_result:
-            img_id = getattr(item.ocr_result, "inspection_image_id", 0)
-        if not img_id:
-            img_id = 0
-        if img_id not in ocr_items_by_image:
-            ocr_items_by_image[img_id] = []
-        ocr_items_by_image[img_id].append(item)
+    image_angles: dict[int, str] = {}
 
-    extracted_results = extract_declarations_from_all_images(ocr_items_by_image)
+    if image_ocr_data:
+        for entry in image_ocr_data:
+            img_id = entry.get("image_id", 0)
+            ang = (entry.get("angle") or "UNKNOWN").upper()
+            items = entry.get("items", [])
+            ocr_items_by_image[img_id] = items
+            image_angles[img_id] = ang
+    else:
+        for item in ocr_items:
+            img_id = getattr(item, "source_image_id", None)
+            if img_id is None and hasattr(item, "ocr_result") and item.ocr_result:
+                img_id = getattr(item.ocr_result, "inspection_image_id", None)
+            if img_id is None:
+                img_id = 0
+            ang = getattr(item, "angle", None)
+            if ang and img_id not in image_angles:
+                image_angles[img_id] = str(ang).upper()
+            if img_id not in ocr_items_by_image:
+                ocr_items_by_image[img_id] = []
+            ocr_items_by_image[img_id].append(item)
+
+    extracted_results = extract_declarations_from_all_images(
+        ocr_items_by_image,
+        image_angles=image_angles,
+    )
     return [r.to_dict() for r in extracted_results]
 
 def extract_declarations(lines_text: list[str]) -> list[dict]:

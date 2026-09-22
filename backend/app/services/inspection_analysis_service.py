@@ -103,7 +103,7 @@ def analyze_inspection(
         # Otherwise, run Nemotron OCR.
 
         all_ocr_items: List[InspectionOCRItem] = []
-
+        image_ocr_data: List[dict] = []
         processed_images: List[int] = []
 
         for image in active_images:
@@ -148,6 +148,17 @@ def analyze_inspection(
                     )
                     .all()
                 )
+
+                img_angle = (image.angle or "UNKNOWN").upper()
+                for item in ocr_items:
+                    item.source_image_id = image.id
+                    item.angle = img_angle
+
+                image_ocr_data.append({
+                    "image_id": image.id,
+                    "angle": img_angle,
+                    "items": ocr_items,
+                })
 
                 all_ocr_items.extend(
                     ocr_items
@@ -224,6 +235,17 @@ def analyze_inspection(
                 .all()
             )
 
+            img_angle = (image.angle or "UNKNOWN").upper()
+            for item in ocr_items:
+                item.source_image_id = image.id
+                item.angle = img_angle
+
+            image_ocr_data.append({
+                "image_id": image.id,
+                "angle": img_angle,
+                "items": ocr_items,
+            })
+
             # Add to combined OCR collection
 
             all_ocr_items.extend(
@@ -274,23 +296,29 @@ def analyze_inspection(
                 )
             }
 
-        # 6. Extract declarations from ALL OCR items
+        # 6. Extract declarations partitioned per image and angle
 
         extracted_decls = (
             extract_declarations_from_multi_image_ocr(
-                all_ocr_items
+                all_ocr_items,
+                image_ocr_data=image_ocr_data,
             )
         )
 
         # 6b. LLM NER — refine extractions using Llama
         #
-        # Run LLM-based NER on the combined OCR text and merge
-        # results with regex extraction. This corrects common
-        # heuristic errors like putting Nutrition Facts text
-        # into product_name.
+        # Run NER ONLY on FRONT (PDP) image items if available.
+        # This prevents BACK panel headings (e.g. "NUTRITION FACTS",
+        # "INGREDIENTS") or manufacturer legal info from polluting product_name/brand.
 
         try:
-            ner_result = run_ner(all_ocr_items)
+            front_items = [
+                item for entry in image_ocr_data
+                if entry.get("angle") in ("FRONT", "PDP", "PRINCIPAL_DISPLAY_PANEL")
+                for item in entry.get("items", [])
+            ]
+            ner_items = front_items if front_items else all_ocr_items
+            ner_result = run_ner(ner_items)
             if ner_result:
                 extracted_decls = merge_ner_with_regex(
                     extracted_decls, ner_result
@@ -353,13 +381,15 @@ def analyze_inspection(
                 ),
 
                 extraction_confidence=(
-                    decl_dict.get(
-                        "extraction_confidence"
-                    )
+                    decl_dict.get("confidence")
+                    if decl_dict.get("confidence") is not None
+                    else decl_dict.get("extraction_confidence")
                 ),
 
-                confidence=decl_dict.get(
-                    "ocr_confidence"
+                confidence=(
+                    decl_dict.get("confidence")
+                    if decl_dict.get("confidence") is not None
+                    else decl_dict.get("ocr_confidence")
                 ),
 
                 bbox_x=decl_dict.get(

@@ -36,6 +36,7 @@ class DeclarationModel {
   final int? sourceOcrItemId;
   final String? evidenceText;
   final BoundingBoxModel? bbox;
+  final String? angle;
 
   DeclarationModel({
     this.id,
@@ -49,6 +50,7 @@ class DeclarationModel {
     this.sourceOcrItemId,
     this.evidenceText,
     this.bbox,
+    this.angle,
   });
 
   bool get isVerified => status.toUpperCase() == 'VERIFIED';
@@ -71,6 +73,7 @@ class DeclarationModel {
           : int.tryParse(json['source_ocr_item_id']?.toString() ?? ''),
       evidenceText: json['evidence_text']?.toString(),
       bbox: json['bbox'] != null ? BoundingBoxModel.fromJson(json['bbox']) : null,
+      angle: json['angle']?.toString(),
     );
   }
 
@@ -87,6 +90,7 @@ class DeclarationModel {
       if (sourceOcrItemId != null) 'source_ocr_item_id': sourceOcrItemId,
       if (evidenceText != null) 'evidence_text': evidenceText,
       if (bbox != null) 'bbox': bbox!.toJson(),
+      if (angle != null) 'angle': angle,
     };
   }
 
@@ -102,6 +106,7 @@ class DeclarationModel {
     int? sourceOcrItemId,
     String? evidenceText,
     BoundingBoxModel? bbox,
+    String? angle,
   }) {
     return DeclarationModel(
       id: id ?? this.id,
@@ -115,6 +120,7 @@ class DeclarationModel {
       sourceOcrItemId: sourceOcrItemId ?? this.sourceOcrItemId,
       evidenceText: evidenceText ?? this.evidenceText,
       bbox: bbox ?? this.bbox,
+      angle: angle ?? this.angle,
     );
   }
 }

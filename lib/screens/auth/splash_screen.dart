@@ -45,11 +45,16 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       final inspector = await AuthServices().getCurrentInspector(forceRefresh: true);
       if (!mounted) return;
       if (inspector != null && inspector.isApproved) {
+        await InspectionService().loadForInspector(inspector.id);
+        await InspectionService().fetchMyInspections(inspectorId: inspector.id);
+        if (!mounted) return;
         Navigator.of(context).pushReplacementNamed(AppRoutes.shell);
         return;
       }
     }
 
+    await AuthServices().logout();
+    if (!mounted) return;
     Navigator.of(context).pushReplacementNamed(AppRoutes.login);
   }
 

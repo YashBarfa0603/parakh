@@ -224,18 +224,32 @@ def generate_pdf_report_bytes(
         [
             "Brand:",
             inspection.brand or "N/A",
+            "Net Quantity:",
+            inspection.net_quantity or "N/A",
+        ],
+
+        [
+            "MRP:",
+            f"Rs. {inspection.mrp}" if inspection.mrp else "N/A",
             "Country of Origin:",
             inspection.country_of_origin or "N/A",
+        ],
+
+        [
+            "Manufacturer:",
+            inspection.manufacturer_name or "N/A",
+            "Customer Helpline:",
+            inspection.consumer_care_phone or inspection.consumer_care_email or "N/A",
         ],
     ]
 
     t_meta = Table(
         meta_data,
         colWidths=[
-            100,
-            160,
-            110,
-            160,
+            105,
+            165,
+            105,
+            165,
         ],
     )
 
@@ -307,31 +321,55 @@ def generate_pdf_report_bytes(
         Spacer(1, 6)
     )
 
+    image_angle_map = {}
+    if images:
+        image_angle_map = {
+            getattr(img, "id", None): (getattr(img, "angle", None) or "UNKNOWN").upper()
+            for img in images
+            if getattr(img, "id", None)
+        }
+
     decl_data = [
         [
             "Field Name",
             "Extracted Value",
             "Confidence",
+            "Panel",
             "Method",
         ]
     ]
 
     for d in declarations:
+        field_name = getattr(d, "field_name", None) or (d.get("field_name") if isinstance(d, dict) else "")
+        value = getattr(d, "value", None) or (d.get("value") if isinstance(d, dict) else "")
+        ext_conf = getattr(d, "extraction_confidence", None)
+        item_conf = getattr(d, "confidence", None)
 
-        confidence = (
-            d.extraction_confidence
-            or d.confidence
-            or 0
-        )
+        if isinstance(d, dict):
+            confidence = d.get("confidence") or d.get("extraction_confidence") or 0
+            method = d.get("extraction_method", "REGEX")
+            source_img_id = d.get("source_image_id")
+            angle = d.get("angle")
+        else:
+            confidence = ext_conf or item_conf or 0
+            method = getattr(d, "extraction_method", "REGEX")
+            source_img_id = getattr(d, "source_image_id", None)
+            angle = getattr(d, "angle", None)
 
-        conf_str = f"{int(confidence * 100)}%"
+        if not angle and source_img_id in image_angle_map:
+            angle = image_angle_map[source_img_id]
+        if not angle:
+            angle = "FRONT" if field_name.lower() in ("product_name", "brand") else "BACK"
+
+        conf_str = f"{int(confidence * 100)}%" if confidence > 0 else "—"
 
         decl_data.append(
             [
-                d.field_name,
-                d.value or "N/A",
+                field_name.replace("_", " ").title(),
+                str(value or "N/A"),
                 conf_str,
-                d.extraction_method,
+                str(angle).upper(),
+                str(method).upper(),
             ]
         )
 
@@ -340,10 +378,11 @@ def generate_pdf_report_bytes(
         t_decl = Table(
             decl_data,
             colWidths=[
-                140,
-                230,
-                80,
-                80,
+                125,
+                205,
+                70,
+                70,
+                70,
             ],
         )
 

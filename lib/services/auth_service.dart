@@ -5,6 +5,7 @@ import '../core/constants.dart';
 import '../model/auth_response_model.dart';
 import '../model/inspector_model.dart';
 import 'api_service.dart';
+import 'inspection_service.dart';
 
 class AuthServices {
   static final AuthServices _instance = AuthServices._internal();
@@ -22,16 +23,27 @@ class AuthServices {
     try {
       final prefs = await SharedPreferences.getInstance();
       final cachedJson = prefs.getString(_prefsKeyInspector);
-      if (cachedJson != null) {
+      if (cachedJson != null && _apiService.isAuthenticated) {
         _currentInspector = InspectorModel.fromJson(jsonDecode(cachedJson));
+        await InspectionService().loadForInspector(_currentInspector!.id);
+      } else {
+        _currentInspector = null;
+        await InspectionService().clearUserSession();
       }
-    } catch (_) {}
+    } catch (_) {
+      _currentInspector = null;
+      await InspectionService().clearUserSession();
+    }
   }
 
   Future<AuthResponseModel> login({
     required String email,
     required String password,
   }) async {
+    // Reset previous inspector state before authenticating
+    await InspectionService().clearUserSession();
+    _currentInspector = null;
+
     try {
       final response = await _apiService.dio.post(
         '/auth/login',
@@ -44,6 +56,11 @@ class AuthServices {
       await _apiService.setToken(authResponse.accessToken);
       _currentInspector = authResponse.inspector;
       await _cacheInspector(authResponse.inspector);
+
+      // Load inspections strictly for this authenticated inspector
+      await InspectionService().loadForInspector(authResponse.inspector.id);
+      await InspectionService().fetchMyInspections(inspectorId: authResponse.inspector.id);
+
       return authResponse;
     } on DioException catch (e) {
       if (e.type == DioExceptionType.connectionTimeout ||
@@ -72,6 +89,10 @@ class AuthServices {
     required String city,
     required String password,
   }) async {
+    // Reset previous inspector state before signing up new account
+    await InspectionService().clearUserSession();
+    _currentInspector = null;
+
     final data = {
       'name': name.trim(),
       'email': email.trim(),
@@ -91,12 +112,24 @@ class AuthServices {
       await _apiService.setToken(authResponse.accessToken);
       _currentInspector = authResponse.inspector;
       await _cacheInspector(authResponse.inspector);
+
+      // Initialize fresh inspection state for this newly registered inspector
+      await InspectionService().loadForInspector(authResponse.inspector.id);
+      await InspectionService().fetchMyInspections(inspectorId: authResponse.inspector.id);
+
       return authResponse;
     } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.unknown) {
+        throw Exception(
+          'Cannot reach server at ${AppConfig.apiBaseUrl}.\n\nMake sure:\n• Phone & laptop are on same WiFi\n• Backend is running (uv run uvicorn app.main:app)\n• IP is correct in app settings',
+        );
+      }
       final detail = e.response?.data is Map ? e.response?.data['detail'] : null;
       throw Exception(detail ?? e.message ?? 'Registration failed. Please check your details.');
     } catch (e) {
-      throw Exception('An unexpected error occurred during registration: $e');
+      throw Exception('Registration error: $e');
     }
   }
 
@@ -142,6 +175,8 @@ class AuthServices {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_prefsKeyInspector);
     } catch (_) {}
+    // Clear all user-specific inspection state, in-memory lists, and caches
+    await InspectionService().clearUserSession();
   }
 
   bool get isAuthenticated => _apiService.isAuthenticated;

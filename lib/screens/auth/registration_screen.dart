@@ -82,32 +82,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
       if (!mounted) return;
 
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.check_circle_outline_rounded, color: ParakhColors.compliant),
-              SizedBox(width: 8),
-              Text('Registration Submitted'),
-            ],
-          ),
-          content: const Text(
-            'Your inspector account registration has been submitted and approved successfully.\n\nYou can now sign in immediately with your email and password.',
-            style: TextStyle(fontSize: 14, height: 1.4),
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context); // close dialog
-                Navigator.of(context).pushReplacementNamed(AppRoutes.login);
-              },
-              child: const Text('Return to Sign In'),
-            ),
-          ],
-        ),
+      // Already logged in — token stored by signup. Go straight to home.
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRoutes.shell,
+        (route) => false,
       );
     } catch (e) {
       if (!mounted) return;

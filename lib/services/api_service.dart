@@ -49,6 +49,8 @@ class ApiService {
 
           if (_authToken != null && _authToken!.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $_authToken';
+          } else {
+            options.headers.remove('Authorization');
           }
           return handler.next(options);
         },
@@ -75,6 +77,7 @@ class ApiService {
   /// Handle expired token: clear storage and redirect to login
   Future<void> _handleTokenExpired() async {
     _authToken = null;
+    dio.options.headers.remove('Authorization');
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_prefsKeyToken);
@@ -93,12 +96,18 @@ class ApiService {
     try {
       final prefs = await SharedPreferences.getInstance();
       _authToken = prefs.getString(_prefsKeyToken);
+      if (_authToken != null && _authToken!.isNotEmpty) {
+        dio.options.headers['Authorization'] = 'Bearer $_authToken';
+      } else {
+        dio.options.headers.remove('Authorization');
+      }
     } catch (_) {}
   }
 
   /// Save token in memory and preferences
   Future<void> setToken(String token) async {
     _authToken = token;
+    dio.options.headers['Authorization'] = 'Bearer $token';
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_prefsKeyToken, token);
@@ -108,6 +117,7 @@ class ApiService {
   /// Clear token on logout
   Future<void> clearToken() async {
     _authToken = null;
+    dio.options.headers.remove('Authorization');
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_prefsKeyToken);

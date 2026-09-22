@@ -19,13 +19,78 @@ class InspectionService {
   final ApiService _apiService = ApiService();
   static const String _prefsKeyInspectionHistory = 'parakh_inspection_history';
 
-  /// In-memory cache of inspections
+  int? _activeInspectorId;
+
+  /// In-memory cache of inspections strictly for the active inspector
   final List<InspectionModel> _cachedInspections = [];
 
   List<InspectionModel> get cachedInspections => List.unmodifiable(_cachedInspections);
 
+  String _getUserPrefsKey(int inspectorId) => 'parakh_inspections_$inspectorId';
+
   Future<void> init() async {
-    await _loadFromLocal();
+    // Clean up any legacy un-scoped cache
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey(_prefsKeyInspectionHistory)) {
+        await prefs.remove(_prefsKeyInspectionHistory);
+      }
+    } catch (_) {}
+  }
+
+  /// Clear all user-specific inspection session state
+  Future<void> clearUserSession() async {
+    _cachedInspections.clear();
+    _activeInspectorId = null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey(_prefsKeyInspectionHistory)) {
+        await prefs.remove(_prefsKeyInspectionHistory);
+      }
+    } catch (_) {}
+  }
+
+  /// Switch or initialize inspection cache for a specific inspector
+  Future<void> loadForInspector(int inspectorId) async {
+    if (_activeInspectorId != inspectorId) {
+      _cachedInspections.clear();
+      _activeInspectorId = inspectorId;
+    }
+    await _loadFromLocal(inspectorId);
+  }
+
+  /// Fetch inspections from backend belonging strictly to current inspector
+  Future<List<InspectionModel>> fetchMyInspections({int? inspectorId}) async {
+    if (inspectorId != null && _activeInspectorId != inspectorId) {
+      _cachedInspections.clear();
+      _activeInspectorId = inspectorId;
+      await _loadFromLocal(inspectorId);
+    }
+
+    if (!_apiService.isAuthenticated) {
+      _cachedInspections.clear();
+      return [];
+    }
+
+    try {
+      final response = await _apiService.dio.get('/inspections/');
+      final data = response.data;
+      if (data is List) {
+        final items = data
+            .map((e) => InspectionModel.fromJson(e as Map<String, dynamic>))
+            .toList();
+        _cachedInspections.clear();
+        _cachedInspections.addAll(items);
+        if (_activeInspectorId != null) {
+          await _saveToLocal();
+        }
+      }
+    } on DioException catch (e) {
+      debugPrint('Error fetching inspector inspections: $e');
+    } catch (e) {
+      debugPrint('Error parsing inspections: $e');
+    }
+    return cachedInspections;
   }
 
   /// Create a new inspection
@@ -34,6 +99,9 @@ class InspectionService {
       final response = await _apiService.dio.post('/inspections/', data: {});
       final data = response.data;
       final newInspection = InspectionModel.fromJson(data);
+      if (_activeInspectorId == null && newInspection.inspectorId != null) {
+        _activeInspectorId = newInspection.inspectorId;
+      }
       _cachedInspections.insert(0, newInspection);
       await _saveToLocal();
       return newInspection;
@@ -219,13 +287,18 @@ class InspectionService {
 
 
   /// Helper to record local inspections and sync
-  Future<void> _loadFromLocal() async {
+  Future<void> _loadFromLocal([int? inspectorId]) async {
+    final id = inspectorId ?? _activeInspectorId;
+    if (id == null) {
+      _cachedInspections.clear();
+      return;
+    }
     try {
       final prefs = await SharedPreferences.getInstance();
-      final jsonStr = prefs.getString(_prefsKeyInspectionHistory);
+      final jsonStr = prefs.getString(_getUserPrefsKey(id));
+      _cachedInspections.clear();
       if (jsonStr != null) {
         final list = jsonDecode(jsonStr) as List<dynamic>;
-        _cachedInspections.clear();
         for (final item in list) {
           _cachedInspections.add(InspectionModel.fromJson(item as Map<String, dynamic>));
         }
@@ -236,10 +309,12 @@ class InspectionService {
   }
 
   Future<void> _saveToLocal() async {
+    final id = _activeInspectorId;
+    if (id == null) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final list = _cachedInspections.map((i) => i.toJson()).toList();
-      await prefs.setString(_prefsKeyInspectionHistory, jsonEncode(list));
+      await prefs.setString(_getUserPrefsKey(id), jsonEncode(list));
     } catch (e) {
       debugPrint('Error caching inspections: $e');
     }
