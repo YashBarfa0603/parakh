@@ -1,0 +1,112 @@
+# Secrets
+.env
+.env.*
+*.env
+!.env.example
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE
+*.iml
+*.ipr
+*.iws
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.atom/
+
+# Misc
+*.class
+*.log
+*.pyc
+*.pyo
+__pycache__/
+.history
+.svn/
+.build/
+.buildlog/
+migrate_working_dir/
+
+# Flutter / Dart
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+/coverage/
+.metadata
+
+# Generated Dart
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+
+# Symbolication
+app.*.symbols
+
+# Obfuscation
+app.*.map.json
+
+# Android
+/android/app/debug
+/android/app/profile
+/android/app/release
+/android/.gradle/
+/android/.kotlin/
+/android/local.properties
+/android/captures/
+/android/**/GeneratedPluginRegistrant.java
+**/*.keystore
+**/*.jks
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/app.flx
+ios/Flutter/app.zip
+ios/Flutter/flutter_assets/
+ios/Flutter/flutter_export_environment.sh
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.*
+**/Pods/
+*.xcworkspace
+
+# macOS / Linux / Windows
+/macos/Flutter/GeneratedPluginRegistrant.swift
+/linux/flutter/generated_plugin_registrant.cc
+/linux/flutter/generated_plugin_registrant.h
+/windows/flutter/generated_plugin_registrant.cc
+/windows/flutter/generated_plugin_registrant.h
+
+# Backend (Python)
+backend/.venv/
+backend/.mypy_cache/
+backend/.pytest_cache/
+backend/__pycache__/
+backend/uploads/
+backend/reports/
+backend/*.egg-info/
+backend/dist/
+backend/build/
+backend/wheels/
+backend/.git/
+
+# Lock files
+# backend/uv.lock
