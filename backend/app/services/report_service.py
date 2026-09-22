@@ -341,6 +341,8 @@ def generate_pdf_report_bytes(
 
     for d in declarations:
         field_name = getattr(d, "field_name", None) or (d.get("field_name") if isinstance(d, dict) else "")
+        if field_name.lower() == "legibility":
+            continue
         value = getattr(d, "value", None) or (d.get("value") if isinstance(d, dict) else "")
         ext_conf = getattr(d, "extraction_confidence", None)
         item_conf = getattr(d, "confidence", None)
@@ -795,6 +797,7 @@ def generate_json_report(
                 "evidence_text": d.evidence_text,
             }
             for d in declarations
+            if getattr(d, "field_name", "").lower() != "legibility"
         ],
         "findings": [
             {
@@ -847,6 +850,8 @@ def generate_csv_report(
     writer.writerow(["DECLARATIONS"])
     writer.writerow(["Field Name", "Value", "Confidence", "Method"])
     for d in declarations:
+        if getattr(d, "field_name", "").lower() == "legibility":
+            continue
         conf = f"{int((d.extraction_confidence or d.confidence or 0) * 100)}%"
         writer.writerow([d.field_name, d.value or "N/A", conf, d.extraction_method or "N/A"])
     writer.writerow([])

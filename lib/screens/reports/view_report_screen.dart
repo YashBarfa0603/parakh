@@ -543,7 +543,9 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
 
   // Extracted Declarations Table with panel angle and confidence
   Widget _buildExtractedDeclarationsTable(InspectionModel ins) {
-    List<DeclarationModel> decls = List.from(ins.declarations);
+    List<DeclarationModel> decls = ins.declarations
+        .where((d) => d.fieldName.toLowerCase() != 'legibility')
+        .toList();
 
     if (decls.isEmpty) {
       // Synthesize declaration items from inspection attributes if declarations list wasn't cached

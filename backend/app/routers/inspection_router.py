@@ -143,6 +143,11 @@ def list_my_inspections(
             .all()
         )
 
+        image_angle_map = {
+            img.id: (img.angle or "UNKNOWN").upper()
+            for img in images
+        }
+
         results.append({
             "id": inspection.id,
             "inspector_id": inspection.inspector_id,
@@ -182,14 +187,45 @@ def list_my_inspections(
 
             "batch": {
                 "batch_number": batch.batch_number if batch else None,
-                "manufacturing_date": batch.manufacturing_date if batch else None,
+                "manufacturing_date": (
+                    batch.manufacturing_date.strftime("%m/%Y")
+                    if batch and batch.manufacturing_date
+                    else (batch.raw_manufacturing_date if batch else None)
+                ),
                 "raw_manufacturing_date": batch.raw_manufacturing_date if batch else None,
-                "expiry_date": batch.expiry_date if batch else None,
+                "expiry_date": (
+                    batch.expiry_date.strftime("%m/%Y")
+                    if batch and batch.expiry_date
+                    else (batch.raw_expiry_date if batch else None)
+                ),
                 "raw_expiry_date": batch.raw_expiry_date if batch else None,
                 "best_before": batch.best_before if batch else None
             } if batch else None,
 
-            "declarations_count": len(declarations),
+            "declarations_count": len([d for d in declarations if d.field_name.lower() != "legibility"]),
+            "declarations": [
+                {
+                    "id": declaration.id,
+                    "field_name": declaration.field_name,
+                    "value": declaration.value,
+                    "raw_value": declaration.raw_value,
+                    "confidence": (
+                        declaration.extraction_confidence
+                        or declaration.confidence
+                    ),
+                    "extraction_method": declaration.extraction_method,
+                    "status": declaration.status,
+                    "source_image_id": declaration.source_image_id,
+                    "angle": image_angle_map.get(
+                        declaration.source_image_id,
+                        "FRONT" if declaration.field_name in ("product_name", "brand") else "BACK"
+                    ),
+                    "source_ocr_item_id": declaration.source_ocr_item_id,
+                    "evidence_text": declaration.evidence_text,
+                }
+                for declaration in declarations
+                if declaration.field_name.lower() != "legibility"
+            ],
             "findings_count": len(findings),
 
             "findings": [
@@ -212,7 +248,7 @@ def list_my_inspections(
                     "angle": img.angle,
                     "image_url": img.image_url,
                     "sha256": img.sha256,
-                    "quality": img.quality,
+                    "quality": img.image_quality,
                     "authenticity_status": img.authenticity_status,
                 }
                 for img in images
@@ -727,7 +763,7 @@ def get_inspection_details(
 
         } if batch else None,
 
-        "declarations_count": len(declarations),
+        "declarations_count": len([d for d in declarations if d.field_name.lower() != "legibility"]),
         "declarations": [
             {
                 "id": declaration.id,
@@ -749,6 +785,7 @@ def get_inspection_details(
                 "evidence_text": declaration.evidence_text,
             }
             for declaration in declarations
+            if declaration.field_name.lower() != "legibility"
         ],
         "findings_count": len(findings),
 
@@ -828,7 +865,7 @@ def get_inspection_declarations(
 
     return {
         "inspection_id": inspection_id,
-        "count": len(declarations),
+        "count": len([d for d in declarations if d.field_name.lower() != "legibility"]),
 
         "declarations": [
             {
@@ -866,6 +903,7 @@ def get_inspection_declarations(
                 )
             }
             for declaration in declarations
+            if declaration.field_name.lower() != "legibility"
         ]
     }
 

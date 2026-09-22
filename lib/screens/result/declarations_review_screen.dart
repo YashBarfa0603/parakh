@@ -38,7 +38,9 @@ class _DeclarationsReviewScreenState extends State<DeclarationsReviewScreen> {
       final list = await InspectionService().getDeclarations(widget.inspectionId);
       if (mounted) {
         setState(() {
-          _declarations = list;
+          _declarations = list
+              .where((d) => d.fieldName.toLowerCase() != 'legibility')
+              .toList();
         });
       }
     } catch (e) {

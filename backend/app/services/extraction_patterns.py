@@ -43,6 +43,13 @@ LABEL_ALIASES = {
         r"BRAND\s*(?:NAME)?",
     ],
     "manufacturer_name": [
+        r"MANUFACTURED\s*(?:AND|&)?\s*(?:MARKETED|PACKED|DISTRIBUTED)?\s*BY",
+        r"MFG\.?\s*(?:AND|&)?\s*(?:MKT|PKD|PACKED|MARKETED|DISTRIBUTED|KTT)?\.?\s*BY",
+        r"MFGD\.?\s*(?:AND|&)?\s*(?:MKT|PKD)?\.?\s*BY",
+        r"MFD\.?\s*(?:AND|&)?\s*(?:MKT|PKD)?\.?\s*BY",
+        r"MKT\.?\s*(?:AND|&)?\s*MFG\.?\s*BY",
+        r"MANUFACTURER\s*:",
+        r"MANUFACTURER\s+NAME",
         r"MANUFACTURED\s+BY",
         r"MFG\.?\s+BY",
         r"MFGD\.?\s+BY",
@@ -370,10 +377,11 @@ def parse_date_string(text: str) -> Optional[dict]:
 
 # Indian phone numbers: 10 digits, optional +91 / 0 prefix
 PHONE_PATTERN = re.compile(
-    r"(?:\+91[\s\-]?|0)?"
-    r"[6-9]\d{4}[\s\-]?\d{5}"
-    r"|1800[\s\-]?\d{3}[\s\-]?\d{3,4}"  # toll-free
-    r"|1860[\s\-]?\d{3}[\s\-]?\d{4}",   # paid helpline
+    r"(?:"
+    r"1800[\s\-]?\d{2,4}[\s\-]?\d{3,4}"  # toll-free (e.g. 1800 22 4020, 1800 11 2222, 1800 222 3333)
+    r"|1860[\s\-]?\d{2,4}[\s\-]?\d{4}"   # paid helpline
+    r"|(?<!\d)(?:\+91[\s\-]?|0)?[6-9]\d{4}[\s\-]?\d{5}(?!\d)"  # 10-digit mobile isolated from longer IDs
+    r")",
     re.IGNORECASE,
 )
 
@@ -443,6 +451,14 @@ BATCH_LOT_PATTERN = re.compile(
     r"([A-Za-z0-9./-]+)",
     re.IGNORECASE,
 )
+
+# Common instructional English words on packaging near "batch number" that are not batch numbers
+BATCH_STOPWORDS = {
+    "where", "for", "see", "below", "given", "details", "printed", "first",
+    "two", "characters", "of", "and", "the", "is", "denotes", "pack", "package",
+    "packaging", "flap", "seal", "panel", "crimp", "top", "bottom", "side",
+    "front", "back", "laser", "inkjet", "code", "date", "mfd", "exp", "use",
+}
 
 # DIMENSION PATTERNS
 

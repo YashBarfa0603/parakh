@@ -23,6 +23,7 @@ from .extraction_patterns import (
     EMAIL_PATTERN,
     ADDRESS_INDICATORS,
     BATCH_LOT_PATTERN,
+    BATCH_STOPWORDS,
     DIMENSION_PATTERN,
 )
 
@@ -480,6 +481,14 @@ def extract_manufacturer(
         return results
 
     value = normalize_ocr_text(match.group(1))
+    # Clean leading/trailing punctuation and common OCR artifacts
+    value = re.sub(r"^[^\w]+|[^\w.]+$", "", value).strip()
+    # Normalize common OCR typos in company names
+    value = re.sub(r"\bPESICO\b", "PepsiCo", value, flags=re.IGNORECASE)
+    value = re.sub(r"\bHOLINGS\b", "Holdings", value, flags=re.IGNORECASE)
+    value = re.sub(r"\bPVTT?\.?\s*LTD\.?\b", "Pvt. Ltd.", value, flags=re.IGNORECASE)
+    value = re.sub(r"\bINDIA\b", "India", value)
+    value = re.sub(r"\.+$", ".", value).strip()
     if not value or len(value) < 2:
         return results
 
@@ -509,8 +518,8 @@ def extract_manufacturer(
 
     for next_line in following_lines:
         next_text = next_line.normalized
-        # Stop if we hit another label
-        if _is_new_label(next_text):
+        # Stop if we hit another label or non-address text (e.g. license, pack info, nutritional)
+        if _is_new_label(next_text) or re.search(r"\b(?:lic(?:ence)?\.?\s*no|fssai|pack\s*<|single\s+consumption|nutritional|ingredients?)\b", next_text, re.IGNORECASE):
             break
         # Check for address indicators or continuation
         if ADDRESS_INDICATORS.search(next_text) or _looks_like_address_continuation(next_text):
@@ -754,22 +763,35 @@ def extract_batch_number(line: OCRLine) -> Optional[ExtractionResult]:
     match = BATCH_LOT_PATTERN.search(text)
     if match:
         value = match.group(1).strip()
-        if value and len(value) >= 1:
-            return ExtractionResult(
-                field_name="batch_number",
-                value=value,
-                raw_value=match.group(0),
-                confidence=0.88,
-                source_image_id=getattr(line, "source_image_id", None),
-                source_ocr_item_ids=line.ocr_item_ids,
-                evidence_text=text,
-                bbox=_line_bbox(line),
-                extraction_method="REGEX",
-            )
+        # Clean trailing punctuation
+        value = re.sub(r"^[^\w]+|[^\w]+$", "", value).strip()
+        # Discard if it's an instruction word or stopword
+        if not value or value.lower() in BATCH_STOPWORDS:
+            return None
+        # Discard pure punctuation, single characters, or lowercase dictionary words without digits
+        if len(value) < 2 or (value.islower() and not any(c.isdigit() for c in value)):
+            return None
+        return ExtractionResult(
+            field_name="batch_number",
+            value=value,
+            raw_value=match.group(0),
+            confidence=0.88,
+            source_image_id=getattr(line, "source_image_id", None),
+            source_ocr_item_ids=line.ocr_item_ids,
+            evidence_text=text,
+            bbox=_line_bbox(line),
+            extraction_method="REGEX",
+        )
     return None
 
 def extract_consumer_care_phone(line: OCRLine) -> Optional[ExtractionResult]:
     text = line.normalized
+
+    # If the line looks like an FSSAI license list (e.g. contains 'Lic. No' or 'FSSAI' or multiple 14-digit numbers), skip phone extraction unless explicitly marked as Helpline/Toll free
+    is_lic_line = bool(re.search(r"\b(?:lic(?:ence)?\.?\s*no|fssai)\b", text, re.IGNORECASE))
+    is_toll_free = bool(re.search(r"\b(?:1800|1860|toll\s*free|helpline|call\s*us)\b", text, re.IGNORECASE))
+    if is_lic_line and not is_toll_free:
+        return None
 
     # Check if this line has consumer care label context
     has_label = _label_present(text, "consumer_care_phone")
@@ -777,6 +799,10 @@ def extract_consumer_care_phone(line: OCRLine) -> Optional[ExtractionResult]:
     phone_match = PHONE_PATTERN.search(text)
     if phone_match:
         phone = phone_match.group(0).strip()
+        # Verify phone is not part of a 14-digit FSSAI number
+        digits_only = re.sub(r"\D", "", phone)
+        if len(digits_only) > 11 or len(digits_only) < 7:
+            return None
         confidence = 0.90 if has_label else 0.50
         return ExtractionResult(
             field_name="consumer_care_phone",
@@ -855,6 +881,14 @@ def extract_consumer_care_name(line: OCRLine) -> Optional[ExtractionResult]:
         match = pattern.search(text)
         if match:
             value = normalize_ocr_text(match.group(1))
+            # Reject instruction words and stop phrases
+            stop_phrases = {
+                "or queries", "queries", "feedback", "contact", "write",
+                "call", "please", "email", "address", "details", "toll free",
+                "helpline", "customer care", "consumer care"
+            }
+            if value.lower() in stop_phrases or any(value.lower().startswith(sp) for sp in ["or ", "and ", "for "]):
+                continue
             # Only if it looks like a name (not a phone number)
             if value and len(value) >= 3 and not re.match(r"^\d", value):
                 return ExtractionResult(
@@ -876,6 +910,18 @@ def extract_unit_sale_price(line: OCRLine) -> Optional[ExtractionResult]:
     match = _label_match(text, "unit_sale_price")
     if match:
         value = normalize_ocr_text(match.group(1))
+        # Reject if value contains license / FSSAI keywords or multiple 10+ digit numbers
+        if re.search(r"\b(?:lic(?:ence)?\.?\s*no|fssai|noo?)\b", value, re.IGNORECASE):
+            return None
+        # Must look like a unit price: contains digit and (currency or unit indicator)
+        if not re.search(r"\d", value):
+            return None
+        has_price_indicator = bool(re.search(
+            r"(?:₹|rs\.?|inr|p\b|paise|/\s*(?:g|gm|kg|ml|l|ltr|unit|piece)|per\s*(?:g|gm|kg|ml|l|unit))",
+            value, re.IGNORECASE
+        ))
+        if not has_price_indicator:
+            return None
         if value:
             return ExtractionResult(
                 field_name="unit_sale_price",
@@ -1335,6 +1381,44 @@ def deduplicate_extractions(
 
         if res_score > exist_score:
             best_by_field[field] = result
+
+    # Cross-reference inferences if statutory fields are missing
+    if "country_of_origin" not in best_by_field:
+        mfr_name = best_by_field.get("manufacturer_name")
+        mfr_addr = best_by_field.get("manufacturer_address")
+        care_addr = best_by_field.get("consumer_care_address")
+        has_india = False
+        source_id = None
+        for cand in (mfr_name, mfr_addr, care_addr):
+            if cand and re.search(r"\bINDIA\b", cand.value or cand.raw_value or "", re.IGNORECASE):
+                has_india = True
+                source_id = cand.source_image_id
+                break
+        if has_india and "importer_name" not in best_by_field:
+            best_by_field["country_of_origin"] = ExtractionResult(
+                field_name="country_of_origin",
+                value="India",
+                raw_value="India",
+                confidence=0.85,
+                source_image_id=source_id,
+                evidence_text="Inferred from manufacturer / domestic packaging address",
+                extraction_method="CONTEXTUAL",
+                angle="BACK",
+            )
+
+    if "manufacturer_address" not in best_by_field and "consumer_care_address" in best_by_field:
+        care_addr = best_by_field["consumer_care_address"]
+        if re.search(r"\b(?:delhi|mumbai|gurugram|gurgaon|bangalore|kolkata|chennai|hyderabad|pune|haryana|maharashtra|karnataka|india)\b", care_addr.value or "", re.IGNORECASE):
+            best_by_field["manufacturer_address"] = ExtractionResult(
+                field_name="manufacturer_address",
+                value=care_addr.value,
+                raw_value=care_addr.raw_value,
+                confidence=0.75,
+                source_image_id=care_addr.source_image_id,
+                evidence_text=care_addr.evidence_text,
+                extraction_method="CONTEXTUAL",
+                angle=care_addr.angle,
+            )
 
     return list(best_by_field.values())
 

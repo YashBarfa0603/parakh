@@ -69,6 +69,50 @@ _NOISE_TOKENS = {
     "nice", "guarantee", "housekeeping", "good",
 }
 
+# Marketing and promotional claims that should NEVER be a brand or product name
+_MARKETING_SIGNALS = re.compile(
+    r"\b("
+    r"no\s+artificial|artificial\s+(?:colours?|flav[a-z]*|preservatives?)|"
+    r"(?:colours?|flav[a-z]*)\s*&\s*(?:colours?|flav[a-z]*)|"
+    r"no\s+(?:added\s+)?(?:preservatives?|msg|sugar|trans\s+fat)|"
+    r"100%\s*(?:veg|vegetarian|natural|pure|organic|real|authentic)|"
+    r"same\s+great\s+taste|new\s+look|new\s+pack|"
+    r"made\s+with\s+(?:the\s+)?(?:finest|real|fresh|pure)|"
+    r"cooked\s*&\s*seasoned|seasoned\s+to\s+perfection|perfection|"
+    r"deliciously\s+crunchy|crispy\s*&\s*crunchy|extra\s+crunchy|"
+    r"rich\s+in\s+protein|source\s+of\s+fibre|zero\s+(?:cholesterol|trans\s+fat)|"
+    r"serving\s+suggestion|image\s+for\s+illustration|creative\s+visualization|"
+    r"guaranteed\s+fresh|quality\s+seal|pure\s+joy|taste\s+the\s+best|"
+    r"premium\s+quality|finest\s+potatoes|unmistakable\s+flavour|"
+    r"per\s+serve|energy|kcal|adult\'?s\s+rda"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_KNOWN_BRANDS = {
+    "lay's", "lays", "pepsico", "kurkure", "doritos", "cheetos", "pringles",
+    "haldiram's", "haldiram", "balaji", "bikaji", "bingo", "crax",
+    "britannia", "parle", "amul", "itc", "cadbury", "sunfeast", "oreo",
+    "nestle", "maggi", "knorr", "dabur", "patanjali", "kellogg's", "kellogg",
+    "saffola", "fortune", "aashirvaad", "mother dairy", "real", "tropicana",
+    "coca-cola", "thums up", "sprite", "fanta", "limca", "pepsi", "mirinda",
+    "7up", "mountain dew", "red bull", "sting", "frooti", "appy", "paper boat",
+    "bournvita", "horlicks", "complan", "boost", "milo", "nescafe", "bru",
+    "tata", "taj mahal", "red label", "lipton", "wagh bakri",
+    "everest", "mdh", "catch", "badshah", "suhana", "ramdev",
+}
+
+def _is_marketing_claim(text: str) -> bool:
+    return bool(_MARKETING_SIGNALS.search(text))
+
+def _clean_brand_or_product_text(text: str) -> str:
+    # Strip trademark symbols: TM, (TM), ®, (R), ©, (C)
+    text = re.sub(r"\b(TM|MR|SM)\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"[®©™]+", "", text)
+    # Strip non-alphanumeric noise at boundaries
+    text = re.sub(r"^[^\w]+|[^\w]+$", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
 def _is_nutrition_facts_line(text: str) -> bool:
     return bool(_NUTRITION_FACTS_SIGNALS.search(text))
 
@@ -155,38 +199,10 @@ def run_ner(ocr_items: list) -> dict[str, str | None]:
 
     result: dict[str, str | None] = {}
 
-    # Build spatially-ordered lines
-    # Group items into text lines using y-position proximity
-    sorted_items = sorted(
-        ocr_items,
-        key=lambda i: (
-            i.bbox_y if i.bbox_y is not None else 0,
-            i.bbox_x if i.bbox_x is not None else 0,
-        ),
-    )
+    # Build spatially-ordered lines using robust bounding-box overlap grouping
+    from .declaration_extraction_service import group_ocr_items_into_lines
+    grouped_rows = group_ocr_items_into_lines(ocr_items)
 
-    # Group into rows
-    rows: list[list] = []
-    for item in sorted_items:
-        if not item.text or not item.text.strip():
-            continue
-        y = item.bbox_y if item.bbox_y is not None else 0
-        h = item.bbox_height if item.bbox_height is not None else 20
-        placed = False
-        for row in rows:
-            row_y = row[0].bbox_y if row[0].bbox_y is not None else 0
-            row_h = row[0].bbox_height if row[0].bbox_height is not None else 20
-            if abs(y - row_y) <= max(h, row_h) * 0.55:
-                row.append(item)
-                placed = True
-                break
-        if not placed:
-            rows.append([item])
-
-    # Sort rows top to bottom
-    rows.sort(key=lambda r: (r[0].bbox_y if r[0].bbox_y is not None else 0))
-
-    # Build line dicts with aggregated bbox height
     class _Line:
         def __init__(self, items):
             self.items = items
@@ -196,117 +212,88 @@ def run_ner(ocr_items: list) -> dict[str, str | None]:
             self.bbox_height = max(heights) if heights else None
             ys = [i.bbox_y for i in items if i.bbox_y is not None]
             self.bbox_y = min(ys) if ys else None
+            widths = [i.bbox_width for i in items if i.bbox_width is not None]
+            self.bbox_width = sum(widths) if widths else 50
 
-    lines = [_Line(row) for row in rows if any(i.text for i in row)]
+    lines = [_Line(row) for row in grouped_rows if any(i.text for i in row)]
 
-    # Find product name
-    # Strategy:
-    # 1. Find the single word/token with the largest bbox_height (the hero text)
-    # 2. Expand to include immediately adjacent lines of similarly large text
-    # 3. Filter out Nutrition Facts, certifications, and noise
-
-    # Filter candidates — exclude Nutrition Facts and noise
-    valid_lines = [
-        line for line in lines
-        if line.text.strip()
-        and len(line.text.strip()) >= 2
-        and not _is_nutrition_facts_line(line.text)
-        and not _is_all_numbers_or_symbols(line.text)
-        and line.bbox_height is not None
-        and line.bbox_height > 0
-    ]
-
-    if valid_lines:
-        # Find the line with the maximum bbox_height (hero/largest text)
-        hero_line = max(valid_lines, key=lambda l: l.bbox_height or 0)
-        hero_h = hero_line.bbox_height or 20
-        hero_y = hero_line.bbox_y or 0
-
-        # Collect "large text" lines — at least 40% as tall as the hero,
-        # and within 3x hero_height vertically of the hero
-        large_threshold = hero_h * 0.4
-        vertical_window = hero_h * 3
-
-        product_parts = []
-        for line in valid_lines:
-            lh = line.bbox_height or 0
-            ly = line.bbox_y or 0
-            if lh >= large_threshold and abs(ly - hero_y) <= vertical_window:
-                raw_text = line.text.strip()
-                if _is_certification_line(raw_text) or _is_noisy(raw_text):
-                    continue
-                # Skip lines that are quantity, price, or date declarations
-                if re.search(r"\b(net\s*(?:wt|weight|qty|quantity)?|mrp|rs\.?|inr|pkd|mfd|exp)\b", raw_text, re.IGNORECASE):
-                    continue
-                # Filter individual tokens within the line
-                clean_tokens = []
-                for token in raw_text.split():
-                    # Skip date-like tokens (e.g. "2023AUGOR", "20AUG06")
-                    if re.match(r"^\d{2,4}[A-Z]{2,}\d*$", token, re.IGNORECASE):
-                        continue
-                    # Skip expiry junk tokens
-                    if re.match(r"^[A-Z0-9]{1,3}[Ee8Bb]$", token) and len(token) <= 4:
-                        continue
-                    # Skip standalone 1-2 char stop words or quantity units
-                    if token.upper() in {"BY", "OF", "AT", "AS", "IN", "ON", "TO", "BE", "NET", "WT", "WT.", "WEIGHT", "QTY", "QUANTITY", "G", "GM", "GMS", "KG", "ML", "LTR"}:
-                        continue
-                    # Skip pure number tokens
-                    if re.match(r"^\d+[\d:./]*$", token):
-                        continue
-                    clean_tokens.append(token)
-                if clean_tokens:
-                    product_parts.append((ly, " ".join(clean_tokens)))
-
-        if product_parts:
-            # Sort by vertical position and join
-            product_parts.sort(key=lambda p: p[0])
-            combined = " ".join(p[1] for p in product_parts)
-            # Truncate to reasonable length (max 6 words)
-            words = combined.split()
-            if len(words) > 6:
-                words = words[:6]
-            clean = " ".join(words)
-            clean = re.sub(r"\s+", " ", clean).strip()
-            clean = re.sub(r"^[^\w]+|[^\w]+$", "", clean)
-            if clean and len(clean) >= 2:
-                result["product_name"] = clean
-                logger.info("NER product_name: %r (hero_h=%.0f)", clean, hero_h)
-
-    # Find brand
-    # Brand is usually the topmost text that is:
-    # - NOT Nutrition Facts
-    # - NOT pure numbers/symbols
-    # - NOT the same as product_name
-    # - Has reasonable height (at least 15px to filter out tiny text)
-    # - Is short (≤4 words)
-    for line in lines:  # lines is already sorted top-to-bottom
-        text = line.text.strip()
-        if not text or len(text) < 2:
-            continue
-        lh = line.bbox_height or 0
-        if lh < 14:  # skip tiny text (fine print)
-            continue
-        if _is_nutrition_facts_line(text):
-            continue
-        if _is_all_numbers_or_symbols(text):
-            continue
-        if len(text.split()) > 4:
-            continue
-        # Skip pure certification-only words
-        cert_only = re.compile(
-            r"^(usda|organic|vegan|gluten.?free|kosher|halal|certified|"
-            r"good|source|of|protein)\s*$",
-            re.IGNORECASE,
-        )
-        if cert_only.match(text.strip()):
-            continue
-        if _is_noisy(text):
-            continue
-        clean = re.sub(r"\s+", " ", text).strip()
-        if clean and len(clean) >= 2 and clean != result.get("product_name"):
-            result["brand"] = clean
-            logger.info("NER brand: %r", clean)
+    # 1. Identify Brand
+    # First priority: check for known brands in front panel lines
+    detected_brand = None
+    brand_line = None
+    for l in lines:
+        cleaned = _clean_brand_or_product_text(l.text)
+        for word in cleaned.split():
+            clean_word = re.sub(r"[^\w']+", "", word).lower()
+            if clean_word in _KNOWN_BRANDS:
+                detected_brand = word
+                brand_line = l
+                break
+        if detected_brand:
             break
+
+    if not detected_brand:
+        # Fallback: largest prominent non-marketing, non-nutrition line in upper half
+        valid_brand_lines = [
+            l for l in lines
+            if not _is_marketing_claim(l.text)
+            and not _is_nutrition_facts_line(l.text)
+            and not _is_certification_line(l.text)
+            and not _is_all_numbers_or_symbols(l.text)
+            and len(_clean_brand_or_product_text(l.text)) >= 2
+            and len(_clean_brand_or_product_text(l.text).split()) <= 4
+        ]
+        if valid_brand_lines:
+            valid_brand_lines.sort(
+                key=lambda x: ((x.bbox_height or 0) * (x.bbox_width or 1)),
+                reverse=True
+            )
+            brand_line = valid_brand_lines[0]
+            detected_brand = _clean_brand_or_product_text(brand_line.text)
+
+    if detected_brand:
+        result["brand"] = detected_brand
+        logger.info("NER brand: %r", detected_brand)
+
+    # 2. Identify Product Name / Flavor description
+    flavor_words = []
+    if brand_line:
+        bl_text = _clean_brand_or_product_text(brand_line.text)
+        bl_words = [
+            w for w in bl_text.split()
+            if w.lower() not in _KNOWN_BRANDS and w.lower() not in {"brand:", "brand", "tm", "r", "c"}
+        ]
+        flavor_words.extend(bl_words)
+
+    for l in lines:
+        if l == brand_line:
+            continue
+        # Skip lines physically above the brand logo (promotional claims above logo)
+        if brand_line and l.bbox_y is not None and brand_line.bbox_y is not None and l.bbox_y < brand_line.bbox_y:
+            continue
+        txt = _clean_brand_or_product_text(l.text)
+        if not txt or len(txt) < 2:
+            continue
+        if _is_marketing_claim(txt):
+            continue
+        if _is_nutrition_facts_line(txt) or re.search(r"\b(serve|energy|kcal|rda|adult)\b", txt, re.IGNORECASE):
+            continue
+        if re.search(r"\b(net\s*(?:wt|weight|qty|quantity)?|mrp|rs\.?|inr|pkd|mfd|mfg|exp|use\s*by|batch|lot|country|care)\b", txt, re.IGNORECASE):
+            continue
+        for w in txt.split():
+            clean_w = re.sub(r"^[^\w]+|[^\w]+$", "", w)
+            if clean_w and clean_w.upper() not in {"TM", "R", "C", "MADE", "WITH"}:
+                flavor_words.append(clean_w)
+
+    flavor_text = " ".join(flavor_words[:6]).strip()
+    if detected_brand and detected_brand.lower() not in flavor_text.lower():
+        product_name = f"{detected_brand} {flavor_text}".strip() if flavor_text else detected_brand
+    else:
+        product_name = flavor_text or detected_brand
+
+    if product_name:
+        result["product_name"] = product_name
+        logger.info("NER product_name: %r", product_name)
 
     # Net quantity (unit-level fallback)
     # Only fill if not found by regex pipeline — look for "NET WT X oz/g/kg/ml"
