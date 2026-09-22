@@ -4,10 +4,18 @@ from __future__ import annotations
 import json
 import csv
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Tuple, Optional, List, Dict, Any
+
+def format_utc_iso(dt: Optional[datetime]) -> Optional[str]:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
 
 import httpx
 from sqlalchemy.orm import Session
@@ -199,8 +207,12 @@ def generate_pdf_report_bytes(
             str(inspection.id),
             "Date:",
             (
-                inspection.created_at.strftime(
-                    "%Y-%m-%d %H:%M"
+                (
+                    (
+                        inspection.created_at.replace(tzinfo=timezone.utc).astimezone(ZoneInfo("Asia/Kolkata"))
+                        if inspection.created_at.tzinfo is None
+                        else inspection.created_at.astimezone(ZoneInfo("Asia/Kolkata"))
+                    ).strftime("%Y-%m-%d %I:%M %p IST")
                 )
                 if inspection.created_at
                 else "N/A"
@@ -847,8 +859,8 @@ def generate_json_report(
         "status": inspection.status,
         "compliance_result": inspection.compliance_result,
         "canonical_hash": inspection.canonical_hash,
-        "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
-        "finalized_at": inspection.finalized_at.isoformat() if inspection.finalized_at else None,
+        "created_at": format_utc_iso(inspection.created_at),
+        "finalized_at": format_utc_iso(inspection.finalized_at),
         "product": {
             "name": inspection.product_name,
             "brand": inspection.brand,

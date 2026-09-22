@@ -107,6 +107,10 @@ backend/dist/
 backend/build/
 backend/wheels/
 backend/.git/
+*.db
+*.sqlite
+*.sqlite3
 
 # Lock files
 # backend/uv.lock
+

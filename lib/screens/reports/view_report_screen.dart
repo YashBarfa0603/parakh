@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../../core/constants.dart';
+import '../../core/date_utils.dart';
 import '../../core/theme.dart';
 import '../../model/declaration_model.dart';
 import '../../model/finding_model.dart';
@@ -107,12 +107,7 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
   }
 
   String _formatDate(String? raw) {
-    if (raw == null || raw.isEmpty) return '—';
-    try {
-      return DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.parse(raw));
-    } catch (_) {
-      return raw;
-    }
+    return AppDateUtils.formatDateTime(raw);
   }
 
   @override

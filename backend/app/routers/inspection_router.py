@@ -1,6 +1,14 @@
 
 from __future__ import annotations
 from typing import Optional
+from datetime import datetime, timezone
+
+def format_utc_iso(dt: Optional[datetime]) -> Optional[str]:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
 
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
 from fastapi.responses import Response, JSONResponse
@@ -182,11 +190,11 @@ def list_my_inspections(
             "importer_address": inspection.importer_address,
 
             "canonical_hash": inspection.canonical_hash,
-            "finalized_at": inspection.finalized_at,
+            "finalized_at": format_utc_iso(inspection.finalized_at),
             "processing_error": inspection.processing_error,
 
-            "created_at": inspection.created_at,
-            "updated_at": inspection.updated_at,
+            "created_at": format_utc_iso(inspection.created_at),
+            "updated_at": format_utc_iso(inspection.updated_at),
 
             "batch": {
                 "batch_number": batch.batch_number if batch else None,
@@ -727,11 +735,11 @@ def get_inspection_details(
         "importer_address": inspection.importer_address,
 
         "canonical_hash": inspection.canonical_hash,
-        "finalized_at": inspection.finalized_at,
+        "finalized_at": format_utc_iso(inspection.finalized_at),
         "processing_error": inspection.processing_error,
 
-        "created_at": inspection.created_at,
-        "updated_at": inspection.updated_at,
+        "created_at": format_utc_iso(inspection.created_at),
+        "updated_at": format_utc_iso(inspection.updated_at),
 
         "batch": {
             "batch_number": batch.batch_number
@@ -1223,9 +1231,7 @@ def finalize_inspection_endpoint(
         "canonical_hash": (
             finalized_inspection.canonical_hash
         ),
-        "finalized_at": (
-            finalized_inspection.finalized_at.isoformat()
-        ),
+        "finalized_at": format_utc_iso(finalized_inspection.finalized_at),
 
         "report": {
             "id": report.id,

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import '../core/date_utils.dart';
 import '../core/theme.dart';
 import '../model/inspection_model.dart';
 import 'status_badge.dart';
@@ -15,13 +15,7 @@ class InspectionListTile extends StatelessWidget {
   });
 
   String _formatDate(String? rawDate) {
-    if (rawDate == null || rawDate.isEmpty) return 'Recent';
-    try {
-      final dt = DateTime.parse(rawDate);
-      return DateFormat('dd MMM yyyy, hh:mm a').format(dt);
-    } catch (_) {
-      return rawDate;
-    }
+    return AppDateUtils.formatDateTime(rawDate, fallback: 'Recent');
   }
 
   @override

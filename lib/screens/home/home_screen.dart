@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants.dart';
+import '../../core/date_utils.dart';
 import '../../core/theme.dart';
 import '../../model/inspection_model.dart';
 import '../../model/inspector_model.dart';
@@ -57,29 +58,23 @@ class _HomeScreenState extends State<HomeScreen> {
     final today = DateTime.now();
     return _inspections.where((i) {
       if (i.createdAt == null) return false;
-      try {
-        final d = DateTime.parse(i.createdAt!);
-        return d.year == today.year &&
-            d.month == today.month &&
-            d.day == today.day;
-      } catch (_) {
-        return false;
-      }
+      final d = AppDateUtils.parseUtc(i.createdAt);
+      if (d == null) return false;
+      return d.year == today.year &&
+          d.month == today.month &&
+          d.day == today.day;
     }).toList();
   }
 
   String get _lastInspectionTime {
     if (_inspections.isEmpty) return '—';
-    final latest = _inspections.first;
-    if (latest.createdAt == null) return 'Recently';
-    try {
-      final d = DateTime.parse(latest.createdAt!).toLocal();
-      final h = d.hour.toString().padLeft(2, '0');
-      final m = d.minute.toString().padLeft(2, '0');
-      return '$h:$m';
-    } catch (_) {
-      return 'Recently';
+    InspectionModel latest = _inspections.first;
+    for (final i in _inspections) {
+      if (i.id > latest.id) {
+        latest = i;
+      }
     }
+    return AppDateUtils.formatLastInspectionTime(latest.createdAt);
   }
 
   // Greeting
@@ -124,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startNewInspection() =>
       Navigator.of(context).pushNamed(AppRoutes.camera);
 
-  // ════════════════════════════════════════════════════════════════════════════
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -663,22 +658,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _formatDate(String? raw) {
-    if (raw == null) return 'Recent';
-    try {
-      final d = DateTime.parse(raw).toLocal();
-      final now = DateTime.now();
-      final isToday = d.year == now.year && d.month == now.month && d.day == now.day;
-      final prefix = isToday ? 'Today' : '${d.day}/${d.month}/${d.year}';
-      return '$prefix, ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return 'Recent';
-    }
+    return AppDateUtils.formatRecentRowDate(raw);
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+
 // Sub-widgets — all using ParakhColors, no local Color() definitions
-// ═══════════════════════════════════════════════════════════════════════════════
+
 
 class _StatCard extends StatelessWidget {
   final String label;
@@ -828,14 +814,18 @@ class _ActivityCell extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: color),
           const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: color,
-              height: 1,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              maxLines: 1,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: color,
+                height: 1,
+              ),
             ),
           ),
           const SizedBox(height: 2),

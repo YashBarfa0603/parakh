@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../../core/constants.dart';
+import '../../core/date_utils.dart';
 import '../../core/theme.dart';
 import '../../model/inspection_model.dart';
 import '../../services/inspection_service.dart';
@@ -38,13 +38,7 @@ class _InspectionResultScreenState extends State<InspectionResultScreen> {
   }
 
   String _formatDate(String? raw) {
-    if (raw == null || raw.isEmpty) return '—';
-    try {
-      final dt = DateTime.parse(raw);
-      return DateFormat('dd MMM yyyy, hh:mm a').format(dt);
-    } catch (_) {
-      return raw;
-    }
+    return AppDateUtils.formatDateTime(raw);
   }
 
   @override
