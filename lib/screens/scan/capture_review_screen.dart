@@ -118,7 +118,7 @@ class _CaptureReviewScreenState extends State<CaptureReviewScreen> {
       backgroundColor: ParakhColors.background,
       appBar: ParakhAppBar(
         title: 'Review Capture',
-        subtitle: '${_selectedAngle.label}  ·  Inspection #${widget.inspectionId}',
+        subtitle: '${_selectedAngle.label}  ·  Inspection ${InspectionService().getDisplayId(widget.inspectionId)}',
       ),
       body: LoadingOverlay(
         isLoading: _isLoading,

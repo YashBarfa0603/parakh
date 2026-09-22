@@ -143,7 +143,7 @@ class _ViewReportScreenState extends State<ViewReportScreen> {
                     ),
                   ),
                   Text(
-                    'Report #${widget.inspectionId}',
+                    'Report ${_inspection?.displayId ?? "#${widget.inspectionId}"}',
                     style: const TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 11,

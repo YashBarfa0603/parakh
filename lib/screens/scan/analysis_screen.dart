@@ -139,7 +139,7 @@ class _AnalysisScreenState extends State<AnalysisScreen>
                   color: ParakhColors.textPrimary,
                 )),
             Text(
-              'Inspection #${widget.inspectionId}',
+              'Inspection ${InspectionService().getDisplayId(widget.inspectionId)}',
               style: const TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 11,

@@ -135,6 +135,9 @@ class InspectionModel {
   final String? createdAt;
   final String? updatedAt;
 
+  final String? inspectionNumber;
+  final int? inspectorSeq;
+
   final BatchModel? batch;
   final int declarationsCount;
   final int findingsCount;
@@ -169,6 +172,8 @@ class InspectionModel {
     this.processingError,
     this.createdAt,
     this.updatedAt,
+    this.inspectionNumber,
+    this.inspectorSeq,
     this.batch,
     this.declarationsCount = 0,
     this.findingsCount = 0,
@@ -176,6 +181,10 @@ class InspectionModel {
     this.declarations = const [],
     this.findings = const [],
   });
+
+  String get displayId => (inspectionNumber != null && inspectionNumber!.isNotEmpty)
+      ? inspectionNumber!
+      : '#$id';
 
   ComplianceStatus get complianceStatus => ComplianceStatus.fromBackend(complianceResult);
   bool get isFinalized => status.toUpperCase() == 'FINALIZED';
@@ -221,6 +230,10 @@ class InspectionModel {
       processingError: json['processing_error']?.toString(),
       createdAt: json['created_at']?.toString(),
       updatedAt: json['updated_at']?.toString(),
+      inspectionNumber: json['inspection_number']?.toString(),
+      inspectorSeq: json['inspector_seq'] is int
+          ? json['inspector_seq']
+          : int.tryParse(json['inspector_seq']?.toString() ?? ''),
       batch: json['batch'] != null ? BatchModel.fromJson(json['batch']) : null,
       declarationsCount: json['declarations_count'] is int
           ? json['declarations_count']
@@ -262,6 +275,8 @@ class InspectionModel {
       'processing_error': processingError,
       'created_at': createdAt,
       'updated_at': updatedAt,
+      'inspection_number': inspectionNumber,
+      'inspector_seq': inspectorSeq,
       if (batch != null) 'batch': batch!.toJson(),
       'declarations_count': declarationsCount,
       'findings_count': findingsCount,

@@ -12,6 +12,7 @@ def format_utc_iso(dt: Optional[datetime]) -> Optional[str]:
 
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
 from fastapi.responses import Response, JSONResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -91,8 +92,19 @@ def create_inspection(
     db: Session = Depends(get_db)
 ):
 
+    last_seq = (
+        db.query(func.max(Inspection.inspector_seq))
+        .filter(Inspection.inspector_id == current_inspector.id)
+        .scalar()
+    ) or 0
+    seq = last_seq + 1
+    badge = (current_inspector.inspector_id or f"INS-{current_inspector.id}").strip()
+    inspection_number = f"{badge}-{seq:04d}"
+
     inspection = Inspection(
         inspector_id=current_inspector.id,
+        inspector_seq=seq,
+        inspection_number=inspection_number,
         status="PENDING"
     )
 
@@ -110,6 +122,8 @@ def create_inspection(
     return {
         "message": "Inspection created successfully",
         "inspection_id": inspection.id,
+        "inspection_number": inspection.inspection_number,
+        "inspector_seq": inspection.inspector_seq,
         "status": inspection.status
     }
 
@@ -162,6 +176,8 @@ def list_my_inspections(
         results.append({
             "id": inspection.id,
             "inspector_id": inspection.inspector_id,
+            "inspector_seq": inspection.inspector_seq,
+            "inspection_number": inspection.inspection_number or f"INS-{inspection.inspector_id}-{inspection.id:04d}",
             "status": inspection.status,
             "compliance_result": inspection.compliance_result,
 
@@ -696,6 +712,8 @@ def get_inspection_details(
     return {
         "id": inspection.id,
         "inspector_id": inspection.inspector_id,
+        "inspector_seq": inspection.inspector_seq,
+        "inspection_number": inspection.inspection_number or f"INS-{inspection.inspector_id}-{inspection.id:04d}",
         "status": inspection.status,
         "compliance_result": inspection.compliance_result,
 

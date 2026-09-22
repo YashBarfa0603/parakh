@@ -46,7 +46,7 @@ class _EvidenceScreenState extends State<EvidenceScreen> {
       backgroundColor: ParakhColors.backgroundDarker,
       appBar: ParakhAppBar(
         title: 'Evidence & Image Trace',
-        subtitle: 'Inspection #${widget.inspectionId}',
+        subtitle: 'Inspection ${InspectionService().getDisplayId(widget.inspectionId)}',
       ),
       body: LoadingOverlay(
         isLoading: _isLoading,

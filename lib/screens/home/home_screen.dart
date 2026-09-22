@@ -570,8 +570,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_inspections.isNotEmpty) {
       return _inspections.take(5).map((item) {
         return _InspectionRow(
-          title: item.productName ?? 'Inspection #${item.id}',
-          subtitle: 'ID: #${item.id}  ·  ${_formatDate(item.createdAt)}',
+          title: item.productName ?? 'Inspection ${item.displayId}',
+          subtitle: 'ID: ${item.displayId}  ·  ${_formatDate(item.createdAt)}',
           status: item.complianceStatus,
           onTap: () => Navigator.of(context).pushNamed(
             AppRoutes.inspectionResult,

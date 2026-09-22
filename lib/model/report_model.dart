@@ -1,6 +1,7 @@
 class ReportModel {
   final int? id;
   final int inspectionId;
+  final String? inspectionNumber;
   final String? reportHash;
   final String? canonicalHash;
   final String? pdfUrl;
@@ -12,6 +13,7 @@ class ReportModel {
   ReportModel({
     this.id,
     required this.inspectionId,
+    this.inspectionNumber,
     this.reportHash,
     this.canonicalHash,
     this.pdfUrl,
@@ -21,6 +23,10 @@ class ReportModel {
     this.message,
   });
 
+  String get displayId => (inspectionNumber != null && inspectionNumber!.isNotEmpty)
+      ? inspectionNumber!
+      : '#$inspectionId';
+
   factory ReportModel.fromJson(Map<String, dynamic> json) {
     return ReportModel(
       id: json['id'] is int
@@ -29,6 +35,7 @@ class ReportModel {
       inspectionId: json['inspection_id'] is int
           ? json['inspection_id']
           : int.tryParse(json['inspection_id']?.toString() ?? '0') ?? 0,
+      inspectionNumber: json['inspection_number']?.toString(),
       reportHash: json['report_hash']?.toString(),
       canonicalHash: json['canonical_hash']?.toString(),
       pdfUrl: json['pdf_url']?.toString(),
@@ -43,6 +50,7 @@ class ReportModel {
     return {
       'id': id,
       'inspection_id': inspectionId,
+      'inspection_number': inspectionNumber,
       'report_hash': reportHash,
       'canonical_hash': canonicalHash,
       'pdf_url': pdfUrl,

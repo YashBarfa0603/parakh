@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
+import '../../services/inspection_service.dart';
 import '../../widgets/parakh_app_bar.dart';
 
 class EditReportScreen extends StatefulWidget {
@@ -32,7 +33,7 @@ class _EditReportScreenState extends State<EditReportScreen> {
       backgroundColor: ParakhColors.backgroundDarker,
       appBar: ParakhAppBar(
         title: 'Edit Report Notes',
-        subtitle: 'Inspection #${widget.inspectionId}',
+        subtitle: 'Inspection ${InspectionService().getDisplayId(widget.inspectionId)}',
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),

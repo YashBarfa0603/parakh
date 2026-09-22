@@ -1091,7 +1091,7 @@ class _CollectionReviewPage extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Text(
-                          'Inspection #$inspectionId',
+                          'Inspection ${InspectionService().getDisplayId(inspectionId!)}',
                           style: const TextStyle(
                             fontFamily: 'Inter',
                             fontSize: 11,

@@ -188,7 +188,7 @@ class _DeclarationsReviewScreenState extends State<DeclarationsReviewScreen> {
       backgroundColor: ParakhColors.backgroundDarker,
       appBar: ParakhAppBar(
         title: 'Review Declarations',
-        subtitle: 'Rule 6 Verification • Inspection #${widget.inspectionId}',
+        subtitle: 'Rule 6 Verification • Inspection ${InspectionService().getDisplayId(widget.inspectionId)}',
       ),
       body: LoadingOverlay(
         isLoading: _isLoading || _isSaving,

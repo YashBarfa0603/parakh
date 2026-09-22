@@ -38,7 +38,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         final name = (i.productName ?? '').toLowerCase();
         final brand = (i.brand ?? '').toLowerCase();
         final id = i.id.toString();
-        return name.contains(q) || brand.contains(q) || id.contains(q);
+        final num = (i.inspectionNumber ?? '').toLowerCase();
+        return name.contains(q) || brand.contains(q) || id.contains(q) || num.contains(q);
       }).toList();
     }
     return list;
@@ -347,7 +348,7 @@ class _ReportCard extends StatelessWidget {
     final passCount = inspection.findings.where((f) => f.isPass).length;
     final title = inspection.productName?.isNotEmpty == true
         ? inspection.productName!
-        : 'Report #${inspection.id}';
+        : 'Report ${inspection.displayId}';
 
     return GestureDetector(
       onTap: onTap,
@@ -415,7 +416,7 @@ class _ReportCard extends StatelessWidget {
                                       color: ParakhColors.textTertiary)),
                             ],
                             Text(
-                              '#${inspection.id}',
+                              inspection.displayId,
                               style: const TextStyle(
                                 fontFamily: 'Inter',
                                 fontSize: 12,

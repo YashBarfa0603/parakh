@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, DateTime, ForeignKey
+from sqlalchemy import String, DateTime, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base
@@ -12,7 +12,7 @@ from ..database import Base
 class Inspection(Base):
     __tablename__ = "inspections"
 
-    # Unique ID for every inspection
+    # Unique database ID for every inspection
     id: Mapped[int] = mapped_column(
         primary_key=True,
         index=True
@@ -22,6 +22,19 @@ class Inspection(Base):
     inspector_id: Mapped[int] = mapped_column(
         ForeignKey("inspectors.id"),
         nullable=False,
+        index=True
+    )
+
+    # Inspector-scoped sequential number (e.g. 1, 2, 3...)
+    inspector_seq: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True
+    )
+
+    # Formatted inspector-scoped inspection ID (e.g. INSP-DL01-0001)
+    inspection_number: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
         index=True
     )
 

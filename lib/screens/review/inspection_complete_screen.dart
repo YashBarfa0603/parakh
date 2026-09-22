@@ -68,7 +68,7 @@ class InspectionCompleteScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'Inspection #${report.inspectionId} has been finalized with a '
+                'Inspection ${report.displayId} has been finalized with a '
                 'canonical integrity fingerprint under Legal Metrology standards.',
                 textAlign: TextAlign.center,
                 style: ParakhTypography.body2,

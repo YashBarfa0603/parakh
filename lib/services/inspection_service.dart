@@ -26,6 +26,16 @@ class InspectionService {
 
   List<InspectionModel> get cachedInspections => List.unmodifiable(_cachedInspections);
 
+  /// Get formatted inspector-scoped display ID for an inspection ID
+  String getDisplayId(int id) {
+    try {
+      final match = _cachedInspections.firstWhere((i) => i.id == id);
+      return match.displayId;
+    } catch (_) {
+      return '#$id';
+    }
+  }
+
   String _getUserPrefsKey(int inspectorId) => 'parakh_inspections_$inspectorId';
 
   Future<void> init() async {

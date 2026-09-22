@@ -94,7 +94,7 @@ class _InspectorReviewScreenState extends State<InspectorReviewScreen> {
       backgroundColor: ParakhColors.backgroundDarker,
       appBar: ParakhAppBar(
         title: 'Inspector Sign-Off',
-        subtitle: 'Final Decision • Inspection #${widget.inspectionId}',
+        subtitle: 'Final Decision • Inspection ${InspectionService().getDisplayId(widget.inspectionId)}',
       ),
       body: LoadingOverlay(
         isLoading: _isLoading || _isFinalizing,

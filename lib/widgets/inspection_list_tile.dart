@@ -22,7 +22,7 @@ class InspectionListTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = inspection.productName?.isNotEmpty == true
         ? inspection.productName!
-        : 'Inspection #${inspection.id}';
+        : 'Inspection ${inspection.displayId}';
     final subtitle = [
       if (inspection.brand != null && inspection.brand!.isNotEmpty) inspection.brand,
       if (inspection.category != null && inspection.category!.isNotEmpty) inspection.category,

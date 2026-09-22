@@ -204,7 +204,7 @@ def generate_pdf_report_bytes(
     meta_data = [
         [
             "Inspection ID:",
-            str(inspection.id),
+            str(inspection.inspection_number or inspection.id),
             "Date:",
             (
                 (
@@ -855,6 +855,8 @@ def generate_json_report(
 ) -> dict:
     return {
         "inspection_id": inspection.id,
+        "inspection_number": inspection.inspection_number,
+        "inspector_seq": inspection.inspector_seq,
         "inspector_id": inspection.inspector_id,
         "status": inspection.status,
         "compliance_result": inspection.compliance_result,
