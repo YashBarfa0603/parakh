@@ -213,7 +213,7 @@ Run the app:
 # Run on connected device or simulator
 flutter run
  
-# Target a specific device (e.g. iPhone over USB)
+# Target a specific device (e.g. iPhone / Android using USB)
 flutter run -d <DEVICE_ID>
 ```
  
@@ -253,15 +253,6 @@ Core endpoint groups exposed by the backend:
 - [ ] Role-based access control for supervisors and regional officers
 ---
  
-## 🤝 Contributing
- 
-Contributions, bug reports, and feature suggestions are welcome.
- 
-1. Fork the repository and create a feature branch.
-2. Make your changes with clear, focused commits.
-3. Ensure the backend passes its test suite and the Flutter app builds cleanly.
-4. Open a pull request describing the change and its motivation.
----
  
 ## 📜 License
  
