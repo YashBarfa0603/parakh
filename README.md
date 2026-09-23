@@ -9,7 +9,6 @@
 [![OpenCV](https://img.shields.io/badge/OpenCV-5.x-5C3EE8?logo=opencv&logoColor=white)](https://opencv.org)
 [![NVIDIA Nemotron](https://img.shields.io/badge/OCR-NVIDIA%20Nemotron%20V2-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com)
 [![Smart India Hackathon](https://img.shields.io/badge/SIH-orange)](https://www.sih.gov.in)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
  
 ---
  
