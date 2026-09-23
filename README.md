@@ -1,6 +1,6 @@
 # PARAKH (परख)
  
-### AI-Powered Automated Legal Metrology Inspection & Statutory Compliance Platform
+### Smart Compliance Verification for Packaged Commodities
  
 [![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.128+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
