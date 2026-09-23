@@ -189,35 +189,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildServerChip(String label, String url) {
-    final isSelected = AppConfig.apiBaseUrl == url;
-    return InkWell(
-      onTap: () async {
-        await AppConfig.setApiBaseUrl(url);
-        setState(() {});
-      },
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: isSelected ? ParakhColors.accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: isSelected ? ParakhColors.accent : ParakhColors.border,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: isSelected ? Colors.white : ParakhColors.textSecondary,
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -256,8 +227,11 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 10),
 
                           // Ashoka Lion Capital Emblem with Satyameva Jayate
-                          const Center(
-                            child: AshokaEmblem(size: 84, color: ParakhColors.accent),
+                          Center(
+                            child: GestureDetector(
+                              onLongPress: _showConfigDialog,
+                              child: const AshokaEmblem(size: 84, color: ParakhColors.accent),
+                            ),
                           ),
                           const SizedBox(height: 14),
 
@@ -533,26 +507,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Server Switcher
-                          Center(
-                            child: Wrap(
-                              alignment: WrapAlignment.center,
-                              spacing: 6,
-                              runSpacing: 6,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              children: [
-                                _buildServerChip('USB / Local (127.0.0.1)', 'http://127.0.0.1:8000/api'),
-                                _buildServerChip('Wi-Fi (10.126.150.17)', 'http://10.126.150.17:8000/api'),
-                                _buildServerChip('Emulator (10.0.2.2)', 'http://10.0.2.2:8000/api'),
-                                InkWell(
-                                  onTap: _showConfigDialog,
-                                  child: const Icon(Icons.settings_outlined, size: 16, color: ParakhColors.textTertiary),
-                                ),
-                              ],
                             ),
                           ),
                           const SizedBox(height: 28),
