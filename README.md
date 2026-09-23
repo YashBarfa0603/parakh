@@ -7,6 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org)
 [![OpenCV](https://img.shields.io/badge/OpenCV-5.x-5C3EE8?logo=opencv&logoColor=white)](https://opencv.org)
+[![NVIDIA Nemotron](https://img.shields.io/badge/OCR-NVIDIA%20Nemotron%20V2-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com)
 [![Smart India Hackathon](https://img.shields.io/badge/SIH-orange)](https://www.sih.gov.in)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
  
@@ -18,50 +19,102 @@
  
 Under the **Legal Metrology (Packaged Commodities) Rules, 2011**, every pre-packaged commodity sold in India must carry mandatory statutory declarations — MRP inclusive of all taxes, net quantity, manufacturing and expiry dates, consumer care contact details, and manufacturer/importer information.
  
-Today, verifying these declarations is largely a manual, paper-driven process: slow, inconsistent across inspectors, and difficult to audit. PARAKH replaces that workflow with an automated computer-vision and AI pipeline that:
+Today, verifying these declarations is largely a manual, paper-driven process: slow, inconsistent across inspectors, and difficult to audit. PARAKH replaces that workflow with an automated pipeline — combining computer vision, OCR, visual-language understanding, and a deterministic rules engine — that:
  
-1. **Captures** multi-angle packaging photos in a guided, real-time flow.
-2. **Validates image quality** and rejects glare, blur, skew, or duplicate/reused images before they enter the pipeline.
-3. **Extracts statutory declarations** across multiple package faces without conflating front-of-pack and back-of-pack data.
-4. **Evaluates compliance deterministically** against Legal Metrology Rules, with per-clause findings.
-5. **Seals the final report** with a cryptographic SHA-256 fingerprint, producing a tamper-evident, court-admissible record.
+1. **Authenticates** the inspector and creates an inspector-scoped inspection record.
+2. **Captures** multi-angle packaging photos (Front, Back, Top, Bottom) through a guided Flutter camera flow.
+3. **Validates image quality and integrity** — rejecting glare, blur, and skew, and fingerprinting every original image before any processing.
+4. **Extracts text and visual context** using OCR combined with vision-language model (VLM) understanding.
+5. **Identifies and disambiguates entities** (MRP, net quantity, dates, manufacturer, consumer care, country of origin) via NER and contextual extraction.
+6. **Cross-verifies findings** through a multi-agent verification stage that flags conflicting or uncertain data for review.
+7. **Evaluates compliance deterministically** against an applicability engine and the Legal Metrology Rules Engine, with per-clause findings tied to evidence.
+8. **Seals the final decision and report** with canonical SHA-256 fingerprints, producing a tamper-evident, version-tracked, court-admissible record.
 ## 🎯 Why PARAKH
  
 | Manual Inspection Today | With PARAKH |
 |:---|:---|
 | Paper checklists, inconsistent across inspectors | Standardized, rule-driven scoring for every product |
-| No image quality control — blurry or glared photos slip through | Automated quality gate rejects unusable images at capture time |
-| Front/back label data easily mixed up during manual review | Dual-angle OCR correctly attributes each field to its source face |
-| Reports can be edited after the fact with no audit trail | SHA-256 sealed reports are tamper-evident by design |
+| No image quality control — blurry or glared photos slip through | Automated CV quality gate rejects unusable images at capture time |
+| Front/back label data easily mixed up during manual review | OCR + VLM + NER pipeline correctly attributes each field to its source face and context |
+| Findings taken at face value with no cross-checking | Multi-agent verification flags conflicting or uncertain extractions for REVIEW |
+| Reports can be edited after the fact with no audit trail | SHA-256 sealed records are tamper-evident, with versioned hashes on any decision change |
 | Inspection numbering is ad hoc | Inspector-scoped, sequential, auditable numbering |
  
 ---
  
-## 🏛️ System Architecture
+## 🏛️ System Architecture & Technical Flow
  
 ```mermaid
 flowchart TD
-    subgraph MobileApp["📱 Flutter Field App (iOS / Android)"]
-        A[Inspector Login / Auth] --> B[Multi-Angle Package Capture]
-        B --> C[Real-Time Orientation & Framing]
-        C --> D[Secure Image Upload]
+    subgraph Auth["1️⃣ Login & Authentication"]
+        A[Inspector Login - Flutter/Dart] --> A2[FastAPI + JWT Auth]
+        A2 --> A3[bcrypt Password Hashing]
+        A3 --> A4[(PostgreSQL via SQLAlchemy)]
     end
  
-    subgraph BackendPipeline["⚙️ Backend Pipeline (FastAPI / OpenCV / AI)"]
-        D --> E[Image Quality & Authenticity Gate]
-        E -->|Blur / Glare / Perspective / Duplicate Check| F{Quality Valid?}
-        F -->|Fail| G[Prompt Retake / Flag Advisory WARN]
-        F -->|Pass| H[Dual-Angle OCR & Entity Extraction]
-        H --> I[Statutory Rule Compliance Engine]
-        I -->|Rule 6 Verification| J[Compliance Findings & Scoring]
+    subgraph Create["2️⃣ Create Inspection"]
+        A4 --> B[REST API Creates Inspection Record]
+        B --> B2[Linked to Authenticated Inspector]
     end
  
-    subgraph Finalization["🛡️ Verification & Sealing"]
-        J --> K[Inspector Review & Discretionary Override]
-        K --> L[Inspector Sign-Off]
-        L --> M[SHA-256 Canonical Hash Generation]
-        M --> N[Official Legal Metrology PDF Report]
-        N --> O[Tamper-Proof Audit Trail]
+    subgraph Capture["3️⃣ Capture Package"]
+        B2 --> C[Flutter Camera / Image Picker]
+        C --> C2[Front / Back / Top / Bottom Faces]
+        C2 --> C3[(Cloudinary - Image Storage)]
+        C2 --> C4[(PostgreSQL - Metadata & Linkage)]
+    end
+ 
+    subgraph QualityGate["4️⃣ Image Analysis & Integrity"]
+        C3 --> D[OpenCV Quality Checks]
+        D -->|Blur / Glare / Perspective| D2{Quality Valid?}
+        C3 --> D3[SHA-256 Fingerprint of Original Bytes]
+    end
+ 
+    subgraph StartAnalysis["5️⃣ Start Analysis"]
+        D2 -->|Pass| E[Inspector Triggers Analysis]
+        E --> E2[FastAPI Processes All Active Images]
+    end
+ 
+    subgraph OCRStage["6️⃣ OCR + Visual Understanding"]
+        E2 --> F[NVIDIA Nemotron OCR V2]
+        F --> F2[Text + Confidence + Bounding Boxes]
+        E2 --> F3[VLM Visual Context Understanding]
+    end
+ 
+    subgraph NERStage["7️⃣ NER & Contextual Extraction"]
+        F2 --> G[Named Entity Recognition]
+        F3 --> G
+        G --> G2[MRP / Net Qty / Dates / Manufacturer / Consumer Care / Origin]
+        G2 --> G3[Contextual Disambiguation - e.g. Serving Size vs Net Qty]
+    end
+ 
+    subgraph MultiAgent["8️⃣ Multi-Agent Verification"]
+        G3 --> H[Cross-Check Image + Text + Entities + Context]
+        H -->|Conflict / Low Confidence| H2[Flag for REVIEW]
+        H -->|Consistent| H3[Confirmed Structured Declarations]
+    end
+ 
+    subgraph RulesEngine["9️⃣ Legal Metrology Verification"]
+        H3 --> I[Applicability Engine]
+        I --> I2[Deterministic Rule 6 Compliance Engine]
+        I2 --> I3[Per-Clause Findings]
+    end
+ 
+    subgraph InspectorReview["🔟 Evidence & Inspector Review"]
+        I3 --> J[Findings Linked to Evidence & Requirement]
+        J --> J2[Inspector Reviews / Corrects Extractions]
+        J2 --> J3{Decision: PASS / FAIL / REVIEW}
+    end
+ 
+    subgraph Finalize["1️⃣1️⃣ Finalization & Security"]
+        J3 --> K[Canonical SHA-256 Hash of Finalized Record]
+        K --> K2[Decision Versioning on Later Changes]
+    end
+ 
+    subgraph ReportGen["1️⃣2️⃣ Report Generation"]
+        K2 --> L[ReportLab PDF Generation]
+        L --> L2[Product, Declarations, Findings, Rules, Evidence, Decision]
+        L2 --> L3[Independent SHA-256 Hash of Final PDF]
     end
 ```
  
@@ -69,19 +122,34 @@ flowchart TD
  
 ## ✨ Key Features
  
-### 📸 1. Guided Multi-Angle Capture
-- Comprehensive scanning coverage across **Front**, **Back**, **Top**, **Bottom**, **Left**, and **Right** faces.
-- On-device guidance ensures optimal alignment, framing, and packaging isolation before an image is accepted.
-### 🔍 2. Automated Computer-Vision Quality Gate
+### 🔐 1. Login & Authentication
+- Flutter/Dart frontend authenticates against a FastAPI backend using **JWT** (OAuth2 bearer flow, `python-jose`).
+- Passwords are hashed with salted **bcrypt** (`passlib`) — never stored in plaintext.
+- Inspector records and sessions are managed in **PostgreSQL** via **SQLAlchemy 2.0**.
+### 🆕 2. Inspection Creation
+- REST endpoints create a new inspection record and bind it to the authenticated inspector's session — no cross-account data leakage.
+### 📸 3. Guided Multi-Angle Capture
+- Comprehensive scanning coverage across **Front**, **Back**, **Top**, and **Bottom** faces using Flutter's Camera and Image Picker APIs.
+- Captured images are uploaded to **Cloudinary** (encrypted evidence hosting); metadata and the image-to-inspection relationship are persisted in PostgreSQL.
+### 🔍 4. Automated Image Quality & Integrity Gate
 - **Blur Detection** — Laplacian variance scoring rejects unreadable, out-of-focus captures.
 - **Specular Glare Analysis** — HSV reflection profiling flags bright reflections on glossy laminates and foil pouches.
-- **Perspective Rectangularity** — Geometric contour analysis measures surface skew and tilt.
-- **Image Authenticity & Anti-Fraud** — SHA-256 fingerprinting prevents cross-angle photo reuse or duplicate uploads.
-### 🧠 3. Dual-Angle OCR & Entity Fusion
-- Resolves the common problem of front-of-pack (brand, quantity) and back-of-pack (MRP, batch, manufacturer, consumer care) data getting conflated.
-- Maps extracted text to the correct statutory declaration category using purpose-built heuristic and regex parsers.
-### ⚖️ 4. Rule 6 Statutory Compliance Engine
-Evaluates packaged commodities against the **Legal Metrology (Packaged Commodities) Rules, 2011**:
+- **Perspective Rectangularity** — geometric contour analysis measures surface skew and tilt, all via **OpenCV**.
+- **Pre-processing Integrity Fingerprint** — the original image bytes are hashed with **SHA-256** *before* any enhancement or further processing, establishing an unbroken chain of evidence.
+### ▶️ 5. Inspector-Triggered Analysis
+- Analysis begins only once the inspector explicitly starts it after the required faces are collected.
+- The FastAPI backend then batch-processes every active image belonging to that inspection.
+### 🧠 6. OCR + Visual-Language Understanding
+- Text extraction is powered by **NVIDIA Nemotron OCR V2**, returning text, confidence scores, and spatial bounding boxes.
+- OCR output is fused with **VLM (Vision-Language Model)**-based visual understanding so the system reasons about packaging layout and context, not just raw text.
+### 🏷️ 7. NER & Contextual Extraction
+- **Named Entity Recognition** classifies extracted text into statutory categories — MRP, net quantity, manufacture/expiry dates, manufacturer/importer, consumer care, and country of origin.
+- **Contextual extraction** disambiguates visually similar values (e.g., distinguishing a *serving size* from the actual *net quantity* declaration).
+### 🕵️ 8. Multi-Agent Verification
+- A multi-agent verification architecture cross-checks image evidence, extracted text, resolved entities, and surrounding context against each other.
+- Conflicting or low-confidence findings are flagged for **REVIEW** rather than silently accepted.
+### ⚖️ 9. Applicability & Legal Metrology Rules Engine
+Structured, verified declarations are passed through an **applicability engine** (determines which statutory clauses apply to the given commodity) and then a **deterministic Rules Engine** evaluating the **Legal Metrology (Packaged Commodities) Rules, 2011**. AI performs perception and interpretation; the rules engine performs the actual compliance evaluation — keeping the legal decision deterministic and auditable.
  
 | Rule Reference | Statutory Obligation | Automated Check |
 |:---|:---|:---|
@@ -94,26 +162,34 @@ Evaluates packaged commodities against the **Legal Metrology (Packaged Commoditi
 | **Rule 6(1)(f)** | Consumer care details | Validates phone number, email, and redressal address |
 | **Rule 6(1)(g)** | Country of origin | Mandatory detection for all imported products |
  
-### 👮 5. Inspector-Scoped Numbering & Account Isolation
+### 🧾 10. Evidence-Linked Inspector Review
+- Every finding is traceable to its supporting package image and the specific statutory requirement it evaluates.
+- The inspector reviews and can correct extracted information before recording the final **PASS**, **FAIL**, or **REVIEW** decision — with a mandatory audit justification for any override.
+### 👮 11. Inspector-Scoped Numbering, Finalization & Decision Versioning
 - **Sequential inspection numbering** — every inspector has their own sequence, prefixed with their official badge (e.g. `LM-DL-2026-001-0001`, `LM-DL-2026-001-0002`).
-- **Complete session isolation** — no cross-account data leakage across logins or shared field devices.
-- **Inspector-in-the-loop override** — automated findings can be reviewed and manually adjusted, with a mandatory audit justification recorded for each change.
-### 📄 6. Cryptographic Sealing & Tamper-Evident Reports
-- **Canonical SHA-256 fingerprint** seals the inspection record, timestamps, and findings together.
-- **Court-admissible PDF generation** formatted to Government of India guidelines, including the Ashoka Lion emblem, structured finding tables, and verification metadata.
+- On finalization, PARAKH generates a **canonical SHA-256 integrity hash** over the finalized inspection record.
+- If a decision is later changed, a **new decision version** is created with its own corresponding integrity hash — preserving full history rather than overwriting it.
+### 📄 12. Cryptographically Sealed Report Generation
+- The inspection report is generated with **ReportLab**, including product details, statutory declarations, findings, applicable rules, linked evidence, and the inspector's decision.
+- The formatted PDF (following Government of India guidelines, including the Ashoka Lion emblem and structured finding tables) receives its own **independent SHA-256 hash**, sealing the generated document itself.
 ---
  
 ## 🛠️ Technology Stack
  
 | Layer | Technologies |
 |:---|:---|
-| **Mobile Client** | Flutter 3.x, Dart, Dio, Provider/Service pattern, Camera API, Shared Preferences, Intl |
+| **Mobile Client** | Flutter 3.x, Dart, Dio, Provider/Service pattern, Camera API, Image Picker, Shared Preferences, Intl |
 | **Backend Framework** | FastAPI (Python 3.11+), Uvicorn, Pydantic v2 |
 | **Database & ORM** | PostgreSQL 15+, SQLAlchemy 2.0 (psycopg3) |
-| **Computer Vision** | OpenCV (cv2), NumPy |
+| **Image Quality (CV)** | OpenCV (cv2), NumPy — blur, glare, and perspective/skew detection |
+| **OCR** | NVIDIA Nemotron OCR V2 — text, confidence scores, spatial bounding boxes |
+| **Visual Understanding** | Vision-Language Model (VLM) for packaging layout & visual context reasoning |
+| **Entity & Context Extraction** | NER pipeline + contextual disambiguation heuristics |
+| **Verification** | Multi-agent verification architecture (cross-checks image, text, entity & context signals) |
+| **Compliance Logic** | Applicability Engine + deterministic Legal Metrology Rules Engine (Rule 6) |
 | **Document Engine** | ReportLab (vector PDF generation) |
 | **Cloud Storage** | Cloudinary (secure, encrypted evidence hosting) |
-| **Security & Auth** | OAuth2 / JWT (python-jose), Passlib (bcrypt), SHA-256 |
+| **Integrity & Security** | SHA-256 canonical hashing (image, decision, and report level), OAuth2 / JWT (`python-jose`), Passlib (bcrypt) |
  
 ---
  
@@ -143,9 +219,12 @@ parakh/
 │   │   ├── database.py              # PostgreSQL connection & SessionLocal
 │   │   ├── models/                  # SQLAlchemy models (Inspector, Inspection, Images)
 │   │   ├── routers/                 # API endpoints (Auth, Inspections, Audit)
-│   │   ├── rules/                   # Legal Metrology statutory rule evaluators
+│   │   ├── rules/                   # Applicability engine & Legal Metrology rule evaluators
+│   │   ├── vision/                  # OpenCV quality gate, OCR & VLM integration
+│   │   ├── nlp/                     # NER & contextual entity extraction
+│   │   ├── verification/            # Multi-agent verification stage
 │   │   ├── schemas/                 # Pydantic request/response schemas
-│   │   └── services/                # OCR, quality gates, hash sealing, PDF generation
+│   │   └── services/                # Hash sealing, decision versioning, PDF generation
 │   ├── run.py                       # Server entrypoint
 │   └── pyproject.toml               # Python dependencies (managed via uv)
 │
@@ -166,6 +245,7 @@ parakh/
 | Python | `3.11+` |
 | [uv](https://github.com/astral-sh/uv) | Latest (fast Python package manager) |
 | PostgreSQL | `15+`, running locally or remotely |
+| NVIDIA Nemotron OCR V2 access | API key / endpoint for OCR + VLM calls |
  
 ### 1. Backend Setup
  
@@ -183,6 +263,8 @@ JWT_EXPIRE_MINUTES=43200
 CLOUDINARY_CLOUD_NAME=your_cloudinary_name
 CLOUDINARY_API_KEY=your_cloudinary_key
 CLOUDINARY_API_SECRET=your_cloudinary_secret
+NEMOTRON_OCR_API_KEY=your_nemotron_ocr_key
+NEMOTRON_OCR_ENDPOINT=your_nemotron_ocr_endpoint
 ```
  
 Install dependencies and start the server:
@@ -194,7 +276,7 @@ uv run python run.py
  
 The backend starts on port `8000`. Interactive Swagger docs are available at `http://localhost:8000/docs`.
  
-> ⚠️ **Note:** Never commit your `.env` file or real Cloudinary/JWT credentials. Add `.env` to `.gitignore` and rotate `JWT_SECRET_KEY` before any production deployment.
+> ⚠️ **Note:** Never commit your `.env` file or real Cloudinary/JWT/Nemotron credentials. Add `.env` to `.gitignore` and rotate `JWT_SECRET_KEY` before any production deployment.
  
 ### 2. Mobile App Setup
  
@@ -232,6 +314,8 @@ Core endpoint groups exposed by the backend:
 | `/auth` | Inspector registration, login, and JWT issuance |
 | `/inspections` | Create, update, and retrieve inspection records |
 | `/inspections/{id}/images` | Upload and validate multi-angle package images |
+| `/inspections/{id}/analyze` | Trigger OCR, VLM, NER, and multi-agent verification on active images |
+| `/inspections/{id}/decision` | Record or update the inspector's PASS / FAIL / REVIEW decision (versioned) |
 | `/inspections/{id}/report` | Generate and retrieve the sealed PDF report |
 | `/audit` | Query the tamper-evident audit trail |
  
@@ -241,7 +325,9 @@ Core endpoint groups exposed by the backend:
  
 - **No plaintext passwords** — inspector passwords are hashed with salted `bcrypt`.
 - **Zero-data-leakage architecture** — on logout, all in-memory inspection sessions, tokens, and cached lists are scrubbed from the device.
-- **Tamper-evident SHA-256 sealing** — once an inspector finalizes an inspection, its canonical parameters are permanently hashed; any later alteration invalidates the seal.
+- **Chain-of-custody image integrity** — every original image is SHA-256 fingerprinted immediately on upload, before any enhancement or AI processing.
+- **Tamper-evident decision sealing** — once an inspector finalizes an inspection, its canonical parameters are permanently hashed; any later change creates a new, independently hashed decision version rather than overwriting history.
+- **Tamper-evident report sealing** — the generated PDF report is separately SHA-256 hashed, independent of the underlying decision hash.
 - **Local network safety** — iOS App Transport Security exceptions are scoped strictly to local debugging networks (`NSAllowsLocalNetworking`) and should be removed for production builds.
 ---
  
@@ -252,7 +338,6 @@ Core endpoint groups exposed by the backend:
 - [ ] Analytics dashboard for department-level compliance trends
 - [ ] Role-based access control for supervisors and regional officers
 ---
- 
  
 ## 📜 License
  
