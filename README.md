@@ -307,17 +307,46 @@ Once the backend is running, full interactive documentation is available at:
  
 - **Swagger UI** — `http://localhost:8000/docs`
 - **ReDoc** — `http://localhost:8000/redoc`
-Core endpoint groups exposed by the backend:
+### Authentication
  
-| Group | Purpose |
-|:---|:---|
-| `/auth` | Inspector registration, login, and JWT issuance |
-| `/inspections` | Create, update, and retrieve inspection records |
-| `/inspections/{id}/images` | Upload and validate multi-angle package images |
-| `/inspections/{id}/analyze` | Trigger OCR, VLM, NER, and multi-agent verification on active images |
-| `/inspections/{id}/decision` | Record or update the inspector's PASS / FAIL / REVIEW decision (versioned) |
-| `/inspections/{id}/report` | Generate and retrieve the sealed PDF report |
-| `/audit` | Query the tamper-evident audit trail |
+| Method | Endpoint | Purpose |
+|:---|:---|:---|
+| `POST` | `/api/auth/signup` | Register a new inspector |
+| `POST` | `/api/auth/login` | Inspector login, issues JWT |
+| `GET` | `/api/auth/me` | Get current authenticated inspector |
+| `GET` | `/api/auth/approved-test` | Verify inspector approval status |
+| `GET` | `/api/auth/inspector-access-test` | Verify inspector-scoped access |
+ 
+### Admin
+ 
+| Method | Endpoint | Purpose |
+|:---|:---|:---|
+| `POST` | `/api/admin/login` | Admin login |
+| `GET` | `/api/admin/me` | Get current authenticated admin |
+| `GET` | `/api/admin/inspector` | List all inspectors |
+| `PATCH` | `/api/admin/inspectors/{inspector_id}/approve` | Approve a registered inspector |
+| `PATCH` | `/api/admin/inspectors/{inspector_id}/reject` | Reject a registered inspector |
+ 
+### Inspections
+ 
+| Method | Endpoint | Purpose |
+|:---|:---|:---|
+| `POST` | `/api/inspections/` | Create a new inspection record |
+| `POST` | `/api/inspections/{inspection_id}/images` | Upload a package image for the inspection |
+| `GET` | `/api/inspections/{inspection_id}/images/status` | Get multi-angle capture status |
+| `POST` | `/api/inspections/{inspection_id}/analyze` | Trigger OCR, VLM, NER & multi-agent verification |
+| `GET` | `/api/inspections/{inspection_id}` | Get full inspection details |
+| `GET` | `/api/inspections/{inspection_id}/declarations` | Get extracted statutory declarations |
+| `PUT` | `/api/inspections/{inspection_id}/declarations` | Inspector correction of declarations |
+| `GET` | `/api/inspections/{inspection_id}/findings` | Get Rule 6 compliance findings |
+| `POST` | `/api/inspections/{inspection_id}/finalize` | Finalize inspection & seal decision (SHA-256) |
+| `GET` | `/api/inspections/{inspection_id}/report` | Download the sealed PDF report |
+ 
+### Default
+ 
+| Method | Endpoint | Purpose |
+|:---|:---|:---|
+| `GET` | `/` | API root / health check |
  
 ---
  
